@@ -1,236 +1,437 @@
-const { useState, useEffect } = React;
+const { useState, useEffect, useRef, useCallback } = React;
 
-// ─── DATA ─────────────────────────────────────────────────────────────────────
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
+// Replace BIN_ID and API_KEY after creating a free JSONbin.io account:
+//   1. Go to jsonbin.io and sign up (free)
+//   2. Click "Create Bin", paste: {"players":[],"matches":[],"banter":[],"venues":[]}
+//   3. Copy the Bin ID from the URL
+//   4. Go to API Keys, create a key, copy it
+//   Then replace the two lines below:
+const BIN_ID  = 'YOUR_BIN_ID_HERE';
+const API_KEY = 'YOUR_API_KEY_HERE';
+
+const API_BASE = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+const HEADERS  = { 'Content-Type': 'application/json', 'X-Master-Key': API_KEY, 'X-Bin-Versioning': 'false' };
+
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const SPORTS = ['Badminton','Pickleball','Volleyball','Basketball','Tennis','Table Tennis'];
-const SPORT_ICONS = {
-  'Badminton':'BAD','Pickleball':'PCK','Volleyball':'VBL',
-  'Basketball':'BSK','Tennis':'TEN','Table Tennis':'TT'
+const SPORT_ICONS = { 'Badminton':'BAD','Pickleball':'PCK','Volleyball':'VBL','Basketball':'BSK','Tennis':'TEN','Table Tennis':'TT' };
+
+// Two avatar colors: neon (for odd-indexed) and a neutral for even — clean & on-brand
+const avColor = (id) => (id % 2 === 0) ? '#2a2a35' : '#1e2a14';
+const avTextColor = (id) => (id % 2 === 0) ? '#c8ff00' : '#c8ff00';
+
+const DEMO_DATA = {
+  players: [
+    { id:1, name:'Marcus Webb',  handle:'@marcwebb',    bio:'I win. Then I eat.',                       initials:'MW', wins:18, losses:7,  streak:4,  favSport:'Badminton',    pinHash:null },
+    { id:2, name:'Priya Nair',   handle:'@priya_smash', bio:'Badminton queen, protein evangelist.',     initials:'PN', wins:21, losses:5,  streak:6,  favSport:'Volleyball',   pinHash:null },
+    { id:3, name:'DJ Chen',      handle:'@djchen99',    bio:'Sleep. Pickleball. Repeat.',               initials:'DC', wins:14, losses:11, streak:-2, favSport:'Pickleball',   pinHash:null },
+    { id:4, name:'Leon Okafor',  handle:'@leokafor',    bio:'All nets fear me.',                        initials:'LO', wins:16, losses:9,  streak:2,  favSport:'Volleyball',   pinHash:null },
+    { id:5, name:'Sofia Reyes',  handle:'@sof_rey',     bio:'Quiet on court. Loud at dinner.',          initials:'SR', wins:11, losses:14, streak:-1, favSport:'Tennis',       pinHash:null },
+    { id:6, name:'Kai Tanaka',   handle:'@kai_t',       bio:'Net game only. Always.',                   initials:'KT', wins:9,  losses:16, streak:-3, favSport:'Badminton',    pinHash:null },
+    { id:7, name:'Amara Diallo', handle:'@amarad',      bio:'Consistency is the real flex.',            initials:'AD', wins:20, losses:5,  streak:5,  favSport:'Pickleball',   pinHash:null },
+    { id:8, name:'Tomás Vargas', handle:'@tomasv',      bio:'Post-game chicken is non-negotiable.',     initials:'TV', wins:13, losses:12, streak:1,  favSport:'Basketball',   pinHash:null },
+  ],
+  matches: [
+    { id:1, date:'2025-04-14', sport:'Badminton',  team1:[1,3], team2:[2,4], score1:21, score2:15, note:'Marcus and DJ absolutely cooked.' },
+    { id:2, date:'2025-04-12', sport:'Volleyball', team1:[5,6,8], team2:[7,1,2], score1:18, score2:25, note:'Amara served fire all set.' },
+    { id:3, date:'2025-04-10', sport:'Pickleball', team1:[7,8], team2:[3,5], score1:11, score2:7, note:'Tomás with the clutch dink.' },
+    { id:4, date:'2025-04-07', sport:'Badminton',  team1:[2], team2:[1], score1:21, score2:18, note:'Priya in her bag today.' },
+    { id:5, date:'2025-04-05', sport:'Volleyball', team1:[3,4,6], team2:[1,5,7], score1:22, score2:24, note:'SO close. Heartbreak.' },
+  ],
+  banter: [
+    { id:1, playerId:2, text:"Nobody talk to me until I've had 200g protein and reviewed my serve tape.", time:'2h ago', reactions:{fire:12,skull:3,trophy:7} },
+    { id:2, playerId:1, text:'The court was wet. My knee was tweaking. Sun was in my eyes. I still won. But those are the facts.', time:'5h ago', reactions:{fire:4,skull:8,trophy:2} },
+    { id:3, playerId:7, text:'Amara Diallo, 5-streak, no big deal. Just a Tuesday.', time:'1d ago', reactions:{fire:15,skull:1,trophy:11} },
+    { id:4, playerId:6, text:"Going to start a petition to ban Marcus from playing doubles with rookies. It's not fair.", time:'1d ago', reactions:{fire:6,skull:5,trophy:3} },
+  ],
+  venues: [
+    { id:1, name:'Riverdale Community Centre', address:'240 Riverdale Ave', sports:['Badminton','Volleyball'], notes:'Book 3 days ahead. Court 3 is best.', rating:4, cost:'$5/hr' },
+    { id:2, name:'Centennial Park Courts',     address:'Centennial Park',   sports:['Pickleball','Tennis','Badminton'], notes:'Outdoor. Free. Gets busy Sat mornings.', rating:5, cost:'Free' },
+    { id:3, name:'The Cage',                   address:'88 Industrial Blvd',sports:['Basketball','Volleyball'], notes:'Indoor, open gym Sundays 2–6pm.', rating:3, cost:'$3 drop-in' },
+  ],
 };
 
-const AVATAR_COLORS = [
-  '#7c3aed','#0891b2','#059669','#dc2626','#d97706','#db2777','#6366f1','#0ea5e9'
-];
-
-const INITIAL_PLAYERS = [
-  { id:1, name:'Marcus Webb', handle:'@marcwebb', bio:'I win. Then I eat.', initials:'MW', color:'#7c3aed', wins:18, losses:7, streak:4, favSport:'Badminton', pfp:null },
-  { id:2, name:'Priya Nair', handle:'@priya_smash', bio:'Badminton queen, protein evangelist.', initials:'PN', color:'#dc2626', wins:21, losses:5, streak:6, favSport:'Volleyball', pfp:null },
-  { id:3, name:'DJ Chen', handle:'@djchen99', bio:'Sleep. Pickleball. Repeat.', initials:'DC', color:'#059669', wins:14, losses:11, streak:-2, favSport:'Pickleball', pfp:null },
-  { id:4, name:'Leon Okafor', handle:'@leokafor', bio:'All nets fear me.', initials:'LO', color:'#d97706', wins:16, losses:9, streak:2, favSport:'Volleyball', pfp:null },
-  { id:5, name:'Sofia Reyes', handle:'@sof_rey', bio:'Quiet on court. Loud at dinner.', initials:'SR', color:'#db2777', wins:11, losses:14, streak:-1, favSport:'Tennis', pfp:null },
-  { id:6, name:'Kai Tanaka', handle:'@kai_t', bio:'Net game only. Always.', initials:'KT', color:'#0891b2', wins:9, losses:16, streak:-3, favSport:'Badminton', pfp:null },
-  { id:7, name:'Amara Diallo', handle:'@amarad', bio:'Consistency is the real flex.', initials:'AD', color:'#6366f1', wins:20, losses:5, streak:5, favSport:'Pickleball', pfp:null },
-  { id:8, name:'Tomás Vargas', handle:'@tomasv', bio:'Post-game chicken is non-negotiable.', initials:'TV', color:'#0ea5e9', wins:13, losses:12, streak:1, favSport:'Basketball', pfp:null },
-];
-
-const INITIAL_MATCHES = [
-  { id:1, date:'2025-04-14', sport:'Badminton', team1:[1,3], team2:[2,4], score1:21, score2:15, note:'Marcus and DJ absolutely cooked.' },
-  { id:2, date:'2025-04-12', sport:'Volleyball', team1:[5,6,8], team2:[7,1,2], score1:18, score2:25, note:'Amara served fire all set.' },
-  { id:3, date:'2025-04-10', sport:'Pickleball', team1:[7,8], team2:[3,5], score1:11, score2:7, note:'Tomás with the clutch dink.' },
-  { id:4, date:'2025-04-07', sport:'Badminton', team1:[2], team2:[1], score1:21, score2:18, note:'Priya in her bag today.' },
-  { id:5, date:'2025-04-05', sport:'Volleyball', team1:[3,4,6], team2:[1,5,7], score1:22, score2:24, note:'SO close. Heartbreak.' },
-];
-
-const INITIAL_BANTER = [
-  { id:1, playerId:2, text:"Nobody talk to me until I've had 200g protein and reviewed my serve tape.", time:'2h ago', reactions:{ fire:12, skull:3, trophy:7 } },
-  { id:2, playerId:1, text:'The court was wet. My knee was tweaking. Sun was in my eyes. I still won. But those are the facts.', time:'5h ago', reactions:{ fire:4, skull:8, trophy:2 } },
-  { id:3, playerId:7, text:'Amara Diallo, 5-streak, no big deal. Just a Tuesday.', time:'1d ago', reactions:{ fire:15, skull:1, trophy:11 } },
-  { id:4, playerId:6, text:"Going to start a petition to ban Marcus from playing doubles with rookies. It's not fair.", time:'1d ago', reactions:{ fire:6, skull:5, trophy:3 } },
-];
-
-const INITIAL_VENUES = [
-  { id:1, name:'Riverdale Community Centre', address:'240 Riverdale Ave', sports:['Badminton','Volleyball'], notes:'Book 3 days ahead. Court 3 is best.', rating:4, cost:'$5/hr' },
-  { id:2, name:'Centennial Park Courts', address:'Centennial Park', sports:['Pickleball','Tennis','Badminton'], notes:'Outdoor. Free. Gets busy Sat mornings.', rating:5, cost:'Free' },
-  { id:3, name:'The Cage', address:'88 Industrial Blvd', sports:['Basketball','Volleyball'], notes:'Indoor, open gym Sundays 2–6pm.', rating:3, cost:'$3 drop-in' },
-];
-
 const POST_GAME_MEALS = [
-  { id:1, name:'The Recovery Stack', desc:'Double chicken breast, jasmine rice, grilled broccolini with garlic. The gold standard.', protein:68, carbs:55, fat:12, emoji:'🍗' },
-  { id:2, name:'High-Rep Shawarma', desc:'Grilled beef shawarma wrap, hummus, tabbouleh, extra meat no questions asked.', protein:54, carbs:48, fat:22, emoji:'🌯' },
-  { id:3, name:'The Aftermath Bowl', desc:'Ground turkey, black beans, brown rice, avocado, lime crema. Assembly required.', protein:61, carbs:65, fat:18, emoji:'🥗' },
-  { id:4, name:'Eggs & Havoc', desc:'6-egg scramble, turkey sausage, sourdough toast, roasted tomatoes.', protein:52, carbs:34, fat:26, emoji:'🍳' },
-  { id:5, name:'Brisket Blitz', desc:'Slow-smoked brisket, mashed sweet potato, sautéed greens. For serious sessions only.', protein:74, carbs:60, fat:28, emoji:'🥩' },
+  { id:1, name:'The Recovery Stack', desc:'Double chicken breast, jasmine rice, grilled broccolini with garlic.', protein:68, carbs:55, fat:12, emoji:'🍗' },
+  { id:2, name:'High-Rep Shawarma',  desc:'Grilled beef shawarma wrap, hummus, tabbouleh, extra meat.',          protein:54, carbs:48, fat:22, emoji:'🌯' },
+  { id:3, name:'The Aftermath Bowl', desc:'Ground turkey, black beans, brown rice, avocado, lime crema.',         protein:61, carbs:65, fat:18, emoji:'🥗' },
+  { id:4, name:'Eggs & Havoc',       desc:'6-egg scramble, turkey sausage, sourdough toast, roasted tomatoes.',   protein:52, carbs:34, fat:26, emoji:'🍳' },
+  { id:5, name:'Brisket Blitz',      desc:'Slow-smoked brisket, mashed sweet potato, sautéed greens.',            protein:74, carbs:60, fat:28, emoji:'🥩' },
 ];
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
-const load = (k, fb) => { try { const s = localStorage.getItem(k); return s ? JSON.parse(s) : fb; } catch { return fb; } };
-const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
-const getInitials = n => n.split(' ').map(p => p[0]).join('').toUpperCase().slice(0,2);
-const winPct = p => p.wins + p.losses === 0 ? 0 : Math.round((p.wins / (p.wins + p.losses)) * 100);
-const streakLabel = s => s > 0 ? `W${s}` : s < 0 ? `L${Math.abs(s)}` : '—';
-const today = () => new Date().toISOString().split('T')[0];
-const fmtDate = d => new Date(d + 'T00:00:00').toLocaleDateString('en-CA', { month:'short', day:'numeric', year:'numeric' });
+const winPct    = p => p.wins + p.losses === 0 ? 0 : Math.round(p.wins / (p.wins + p.losses) * 100);
+const streak    = s => s > 0 ? `W${s}` : s < 0 ? `L${Math.abs(s)}` : '—';
+const today     = () => new Date().toISOString().split('T')[0];
+const fmtDate   = d => new Date(d + 'T00:00:00').toLocaleDateString('en-CA', { month:'short', day:'numeric', year:'numeric' });
+const initials  = n => n.split(' ').map(p => p[0]).join('').toUpperCase().slice(0,2);
+const hashPin   = async pin => { const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin + 'rally_salt')); return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join(''); };
+
+// Simple local cache of session auth
+const getSession = () => { try { return JSON.parse(sessionStorage.getItem('rally_session')); } catch { return null; } };
+const setSession = (data) => { try { sessionStorage.setItem('rally_session', JSON.stringify(data)); } catch {} };
+const clearSession = () => { try { sessionStorage.removeItem('rally_session'); } catch {} };
+
+// ─── DATA LAYER ───────────────────────────────────────────────────────────────
+const isConfigured = () => BIN_ID !== 'YOUR_BIN_ID_HERE' && API_KEY !== 'YOUR_API_KEY_HERE';
+
+async function fetchData() {
+  if (!isConfigured()) return DEMO_DATA;
+  const r = await fetch(API_BASE + '/latest', { headers: { 'X-Master-Key': API_KEY } });
+  if (!r.ok) throw new Error('fetch failed');
+  const j = await r.json();
+  return j.record;
+}
+
+async function pushData(data) {
+  if (!isConfigured()) return;
+  await fetch(API_BASE, { method:'PUT', headers: HEADERS, body: JSON.stringify(data) });
+}
 
 // ─── AVATAR ───────────────────────────────────────────────────────────────────
-function Avatar({ player, size = 44, onClick }) {
+function Av({ player, size = 40, onClick }) {
+  const bg = avColor(player.id);
+  const tc = avTextColor(player.id);
   return (
     <div onClick={onClick} title={player.name} style={{
-      width: size, height: size, borderRadius: '50%',
-      background: player.pfp ? 'transparent' : player.color,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700,
-      fontSize: size * 0.35, color: '#fff',
-      overflow: 'hidden', flexShrink: 0,
+      width:size, height:size, borderRadius:'50%', background:bg,
+      display:'flex', alignItems:'center', justifyContent:'center',
+      fontFamily:'Barlow Condensed,sans-serif', fontWeight:900,
+      fontSize:size*0.36, color:tc,
+      overflow:'hidden', flexShrink:0,
       cursor: onClick ? 'pointer' : 'default',
-      border: '2px solid rgba(255,255,255,0.12)',
-    }}>
-      {player.pfp ? <img src={player.pfp} alt={player.name} style={{width:'100%',height:'100%',objectFit:'cover'}} /> : player.initials}
+      border:'2px solid rgba(200,255,0,0.15)',
+      userSelect:'none',
+    }} className="av">
+      {player.initials}
+    </div>
+  );
+}
+
+// ─── SETUP SCREEN (JSONbin not configured) ────────────────────────────────────
+function SetupScreen() {
+  return (
+    <div className="setup-wrap">
+      <div className="setup-card">
+        <div className="setup-logo">RALLY<span style={{color:'#5a5a6e',fontSize:16,fontWeight:400,letterSpacing:'0.14em'}}>.GG</span></div>
+        <div className="setup-sub">Crew Scoreboard · Shared Mode</div>
+        <div style={{background:'rgba(200,255,0,0.06)',border:'1px solid rgba(200,255,0,0.2)',borderRadius:6,padding:14,marginBottom:16}}>
+          <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:13,letterSpacing:'0.1em',textTransform:'uppercase',color:'#c8ff00',marginBottom:8}}>One-time setup needed</div>
+          <div style={{fontSize:13,color:'#9898a8',lineHeight:1.65}}>
+            To sync scores across all your devices for free:<br/><br/>
+            <b style={{color:'#f0f0f5'}}>1.</b> Go to <a href="https://jsonbin.io" target="_blank" style={{color:'#c8ff00'}}>jsonbin.io</a> and create a free account<br/>
+            <b style={{color:'#f0f0f5'}}>2.</b> Click <b style={{color:'#f0f0f5'}}>Create Bin</b>, paste this as content:<br/>
+            <code style={{display:'block',background:'#0d0d0f',padding:'8px 10px',borderRadius:4,fontSize:11,color:'#c8ff00',marginTop:6,marginBottom:6,wordBreak:'break-all'}}>{'{"players":[],"matches":[],"banter":[],"venues":[]}'}</code>
+            <b style={{color:'#f0f0f5'}}>3.</b> Copy the <b style={{color:'#f0f0f5'}}>Bin ID</b> from the URL<br/>
+            <b style={{color:'#f0f0f5'}}>4.</b> Go to <b style={{color:'#f0f0f5'}}>API Keys</b>, create a Master Key<br/>
+            <b style={{color:'#f0f0f5'}}>5.</b> Open <code style={{color:'#c8ff00'}}>app.js</code> and replace the two lines at the top:<br/>
+            <code style={{display:'block',background:'#0d0d0f',padding:'8px 10px',borderRadius:4,fontSize:11,color:'#9898a8',marginTop:6,lineHeight:1.8}}>
+              const BIN_ID  = '<b style={{color:'#c8ff00'}}>paste-bin-id-here</b>';<br/>
+              const API_KEY = '<b style={{color:'#c8ff00'}}>paste-api-key-here</b>';
+            </code>
+          </div>
+        </div>
+        <div style={{fontSize:12,color:'#5a5a6e',textAlign:'center',fontFamily:'DM Mono,monospace',letterSpacing:'0.06em'}}>
+          Free tier: 10k requests/month · No credit card needed
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
+function LoginScreen({ players, onLogin, onRegister }) {
+  const [step, setStep]       = useState('pick'); // 'pick' | 'pin' | 'newpin'
+  const [selected, setSelected] = useState(null);
+  const [pin, setPin]         = useState(['','','','']);
+  const [confirm, setConfirm] = useState(['','','','']);
+  const [err, setErr]         = useState('');
+  const [loading, setLoading] = useState(false);
+  const pinRefs = [useRef(),useRef(),useRef(),useRef()];
+  const conRefs = [useRef(),useRef(),useRef(),useRef()];
+
+  const handlePinInput = (refs, arr, setArr, idx, val) => {
+    if (!/^\d*$/.test(val)) return;
+    const next = [...arr]; next[idx] = val.slice(-1); setArr(next); setErr('');
+    if (val && idx < 3) refs[idx+1].current?.focus();
+    if (!val && idx > 0) refs[idx-1].current?.focus();
+  };
+
+  const fullPin = arr => arr.join('');
+
+  const selectPlayer = p => {
+    setSelected(p); setPin(['','','','']); setConfirm(['','','','']); setErr('');
+    if (!p.pinHash) { setStep('newpin'); } else { setStep('pin'); }
+    setTimeout(() => pinRefs[0].current?.focus(), 50);
+  };
+
+  const submitPin = async () => {
+    const code = fullPin(pin);
+    if (code.length < 4) { setErr('Enter all 4 digits'); return; }
+    setLoading(true);
+    const h = await hashPin(code);
+    if (h === selected.pinHash) {
+      setSession({ id: selected.id, name: selected.name });
+      onLogin(selected.id);
+    } else {
+      setErr('Wrong PIN — try again');
+      setPin(['','','','']);
+      pinRefs[0].current?.focus();
+    }
+    setLoading(false);
+  };
+
+  const submitNewPin = async () => {
+    const code = fullPin(pin);
+    const conf = fullPin(confirm);
+    if (code.length < 4) { setErr('Enter all 4 digits'); return; }
+    if (code !== conf)   { setErr('PINs don't match'); return; }
+    setLoading(true);
+    const h = await hashPin(code);
+    await onRegister(selected.id, h);
+    setSession({ id: selected.id, name: selected.name });
+    onLogin(selected.id);
+    setLoading(false);
+  };
+
+  return (
+    <div className="setup-wrap">
+      <div className="setup-card">
+        <div className="setup-logo">RALLY<span style={{color:'#5a5a6e',fontSize:14,fontWeight:400,letterSpacing:'0.14em'}}>.GG</span></div>
+        <div className="setup-sub">Who's playing today?</div>
+
+        {step === 'pick' && (
+          <>
+            <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:320,overflowY:'auto'}}>
+              {players.map(p => (
+                <button key={p.id} onClick={() => selectPlayer(p)} style={{
+                  display:'flex',alignItems:'center',gap:12,padding:'10px 12px',
+                  background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,
+                  cursor:'pointer',transition:'border-color 0.15s',textAlign:'left',
+                }} onMouseEnter={e=>e.currentTarget.style.borderColor='#c8ff00'} onMouseLeave={e=>e.currentTarget.style.borderColor='rgba(255,255,255,0.07)'}>
+                  <Av player={p} size={36} />
+                  <div>
+                    <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:15,textTransform:'uppercase',color:'#f0f0f5'}}>{p.name}</div>
+                    <div style={{fontFamily:'DM Mono,monospace',fontSize:10,color:'#5a5a6e'}}>{p.handle} {!p.pinHash ? '· set up PIN' : ''}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="divider" />
+            <div style={{textAlign:'center',fontFamily:'DM Mono,monospace',fontSize:10,color:'#5a5a6e',letterSpacing:'0.06em'}}>New player? An admin needs to add you to the roster first.</div>
+          </>
+        )}
+
+        {step === 'pin' && selected && (
+          <>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+              <Av player={selected} size={36} />
+              <div>
+                <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:16,textTransform:'uppercase',color:'#f0f0f5'}}>{selected.name}</div>
+                <div style={{fontFamily:'DM Mono,monospace',fontSize:10,color:'#5a5a6e'}}>Enter your 4-digit PIN</div>
+              </div>
+            </div>
+            <div className="pin-row">
+              {pin.map((d,i) => (
+                <input key={i} ref={pinRefs[i]} className="pin-d" type="password" inputMode="numeric" maxLength={1} value={d}
+                  onChange={e => handlePinInput(pinRefs, pin, setPin, i, e.target.value)}
+                  onKeyDown={e => { if (e.key==='Enter') submitPin(); if (e.key==='Backspace'&&!pin[i]&&i>0) pinRefs[i-1].current?.focus(); }} />
+              ))}
+            </div>
+            {err && <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:'#ff3d71',textAlign:'center',marginBottom:8}}>{err}</div>}
+            <button className="btn btn-primary btn-full" onClick={submitPin} disabled={loading}>{loading ? 'Checking...' : 'Sign In →'}</button>
+            <button onClick={() => setStep('pick')} style={{display:'block',margin:'10px auto 0',fontFamily:'DM Mono,monospace',fontSize:10,color:'#5a5a6e',background:'none',border:'none',cursor:'pointer',letterSpacing:'0.06em'}}>← Different player</button>
+          </>
+        )}
+
+        {step === 'newpin' && selected && (
+          <>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+              <Av player={selected} size={36} />
+              <div>
+                <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:16,textTransform:'uppercase',color:'#f0f0f5'}}>{selected.name}</div>
+                <div style={{fontFamily:'DM Mono,monospace',fontSize:10,color:'#c8ff00'}}>Set up your 4-digit PIN</div>
+              </div>
+            </div>
+            <label style={{marginBottom:6}}>Choose a PIN</label>
+            <div className="pin-row">
+              {pin.map((d,i) => (
+                <input key={i} ref={pinRefs[i]} className="pin-d" type="password" inputMode="numeric" maxLength={1} value={d}
+                  onChange={e => handlePinInput(pinRefs, pin, setPin, i, e.target.value)}
+                  onKeyDown={e => { if (e.key==='Backspace'&&!pin[i]&&i>0) pinRefs[i-1].current?.focus(); }} />
+              ))}
+            </div>
+            <label style={{marginTop:10,marginBottom:6}}>Confirm PIN</label>
+            <div className="pin-row">
+              {confirm.map((d,i) => (
+                <input key={i} ref={conRefs[i]} className="pin-d" type="password" inputMode="numeric" maxLength={1} value={d}
+                  onChange={e => handlePinInput(conRefs, confirm, setConfirm, i, e.target.value)}
+                  onKeyDown={e => { if (e.key==='Enter') submitNewPin(); if (e.key==='Backspace'&&!confirm[i]&&i>0) conRefs[i-1].current?.focus(); }} />
+              ))}
+            </div>
+            {err && <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:'#ff3d71',textAlign:'center',marginTop:4,marginBottom:4}}>{err}</div>}
+            <button className="btn btn-primary btn-full" style={{marginTop:12}} onClick={submitNewPin} disabled={loading}>{loading ? 'Setting PIN...' : 'Set PIN & Enter →'}</button>
+            <button onClick={() => setStep('pick')} style={{display:'block',margin:'10px auto 0',fontFamily:'DM Mono,monospace',fontSize:10,color:'#5a5a6e',background:'none',border:'none',cursor:'pointer',letterSpacing:'0.06em'}}>← Back</button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
 
 // ─── HEADER ───────────────────────────────────────────────────────────────────
-function Header({ page, setPage, sport, setSport, players }) {
-  const dateStr = new Date().toLocaleDateString('en-CA', { weekday:'short', year:'numeric', month:'short', day:'numeric' });
+function Header({ page, setPage, players, currentUser, onLogout, syncStatus, lastSync }) {
   const sorted = [...players].sort((a,b) => b.wins - a.wins);
-  const tickerText = sorted.map(p => `${p.name.toUpperCase()}  ${p.wins}W–${p.losses}L`).join('   ·   ');
+  const ticker = sorted.map(p => `${p.name.toUpperCase()} ${p.wins}W–${p.losses}L`).join('   ·   ');
+  const me = players.find(p => p.id === currentUser);
   const navItems = [
-    { id:'scoreboard', label:'Scoreboard' },
-    { id:'roster', label:'Roster' },
-    { id:'results', label:'Results' },
-    { id:'venues', label:'Spots' },
-    { id:'rations', label:'Fuel' },
-    { id:'dispatch', label:'Chat' },
+    {id:'scoreboard',label:'Scores'},{id:'roster',label:'Roster'},{id:'results',label:'Results'},
+    {id:'venues',label:'Spots'},{id:'rations',label:'Fuel'},{id:'dispatch',label:'Chat'},
   ];
+  const dotCls = 'sync-dot' + (syncStatus==='ok' ? ' live' : syncStatus==='err' ? ' err' : '');
+  const syncMsg = syncStatus==='ok' ? (lastSync ? `Synced ${lastSync}` : 'Live') : syncStatus==='syncing' ? 'Syncing…' : syncStatus==='err' ? 'Offline — data may be stale' : 'Loading…';
   return (
     <div className="header">
-      <div style={{background:'#c8ff00',overflow:'hidden',height:28,display:'flex',alignItems:'center'}}>
-        <span style={{display:'inline-flex',whiteSpace:'nowrap',animation:'ticker 28s linear infinite',fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:12,letterSpacing:'0.12em',textTransform:'uppercase',color:'#0d0d0f',gap:0}}>
-          &nbsp;&nbsp;{tickerText}&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;{tickerText}&nbsp;&nbsp;
-        </span>
+      <div className="ticker-wrap">
+        <span className="ticker-inner">&nbsp;&nbsp;{ticker}&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;{ticker}&nbsp;&nbsp;</span>
       </div>
-      <style>{`@keyframes ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}`}</style>
       <div className="header-top">
-        <div className="logo">RALLY<span style={{color:'var(--text3)',fontSize:16,fontWeight:400,letterSpacing:'0.15em',marginLeft:4,verticalAlign:'middle'}}>.GG</span></div>
-        <span className="header-date">{dateStr}</span>
+        <div className="logo">RALLY<span style={{color:'#5a5a6e',fontSize:13,fontWeight:400,letterSpacing:'0.14em'}}>.GG</span></div>
+        {me && (
+          <button className="header-user-btn" onClick={onLogout} style={{background:'none',border:'none',cursor:'pointer',display:'flex',alignItems:'center',gap:8,padding:'5px 10px',borderRadius:4,border:'1px solid rgba(255,255,255,0.13)',background:'#1c1c21'}}>
+            <Av player={me} size={26} />
+            <div style={{textAlign:'left'}}>
+              <div style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:13,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.06em',color:'#f0f0f5',lineHeight:1}}>{me.name.split(' ')[0]}</div>
+              <div style={{fontFamily:'DM Mono,monospace',fontSize:9,color:'#5a5a6e',marginTop:1}}>Sign out</div>
+            </div>
+          </button>
+        )}
       </div>
       <nav className="nav">
         {navItems.map(n => (
           <button key={n.id} className={`nav-btn${page===n.id?' active':''}`} onClick={() => setPage(n.id)}>{n.label}</button>
         ))}
       </nav>
-      <div className="sport-bar">
-        <span className="sport-label">Sport</span>
-        {SPORTS.map(s => (
-          <button key={s} className={`sport-btn${sport===s?' active':''}`} onClick={() => setSport(s)}>{s}</button>
-        ))}
+      <div className="sync-bar">
+        <div className={dotCls}></div>
+        <span>{isConfigured() ? syncMsg : 'Demo mode — configure JSONbin to sync across devices'}</span>
       </div>
     </div>
   );
 }
 
-// ─── SCOREBOARD PAGE ──────────────────────────────────────────────────────────
-function ScoreboardPage({ players, matches, sport, setPage, setViewPlayer, banter }) {
-  const sorted = [...players].sort((a,b) => b.wins - a.wins || winPct(b) - winPct(a));
-  const top = sorted[0];
-  const sportMatches = matches.filter(m => m.sport === sport);
-  const recent = [...sportMatches].sort((a,b) => b.date.localeCompare(a.date)).slice(0,3);
-  const topBanter = banter.slice(0,2);
+// ─── SCOREBOARD ───────────────────────────────────────────────────────────────
+function ScoreboardPage({ data, sport, setSport, setPage, setViewPlayer, setData, currentUser }) {
+  const { players, matches, banter } = data;
+  const sorted  = [...players].sort((a,b) => b.wins - a.wins || winPct(b) - winPct(a));
+  const top     = sorted[0];
+  const recent  = [...matches].filter(m => m.sport === sport).sort((a,b) => b.date.localeCompare(a.date)).slice(0,3);
+  const topChat = banter.slice(0,2);
 
   return (
     <div className="page">
-      {/* Page title */}
-      <div style={{marginBottom:24}}>
-        <div className="kicker">{sport} · All time</div>
-        <div className="hed-xl"><span className="accent">CREW</span> STANDINGS</div>
+      <div style={{marginBottom:16}}>
+        <div className="kicker">Season 2025</div>
+        <div className="hed"><span className="a">CREW</span> STANDINGS</div>
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'1fr 300px',gap:16,alignItems:'start'}}>
-        {/* LEFT — leaderboard + recent */}
+      <div style={{marginBottom:16}} className="sport-row">
+        <span className="sport-lbl">Sport</span>
+        <select className="sport-sel" value={sport} onChange={e => setSport(e.target.value)}>
+          {SPORTS.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+
+      <div className="sb-layout">
+        {/* LEFT */}
         <div>
-          <div className="section-head"><h2>Leaderboard</h2><div className="section-head-line"></div></div>
-          <div className="card" style={{marginBottom:16}}>
-            <table className="lb-table">
+          <div className="sh"><h2>Leaderboard</h2><div className="sh-line"></div></div>
+          <div className="card" style={{marginBottom:14}}>
+            <table className="lb">
               <thead>
                 <tr>
                   <th style={{width:36}}>#</th>
                   <th>Athlete</th>
-                  <th>W</th><th>L</th><th>Pct</th><th>Streak</th>
+                  <th>W</th>
+                  <th className="lb-hide">L</th>
+                  <th>Pct</th>
+                  <th>Str</th>
                 </tr>
               </thead>
               <tbody>
                 {sorted.map((p,i) => (
                   <tr key={p.id}>
-                    <td><span className={`lb-rank${i===0?' top1':i===1?' top2':i===2?' top3':''}`}>{i+1}</span></td>
+                    <td><span className={`lb-rank${i===0?' r1':i===1?' r2':i===2?' r3':''}`}>{i+1}</span></td>
                     <td>
-                      <div className="lb-name-cell">
-                        <div className="lb-mini-avatar" style={{background:p.color}} onClick={() => { setViewPlayer(p.id); setPage('profile'); }}>
-                          {p.pfp ? <img src={p.pfp} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}} /> : p.initials}
-                        </div>
+                      <div className="lb-cell">
+                        <Av player={p} size={30} onClick={() => { setViewPlayer(p.id); setPage('profile'); }} />
                         <div>
                           <div className="lb-name" onClick={() => { setViewPlayer(p.id); setPage('profile'); }}>{p.name}</div>
-                          <div className="meta" style={{fontSize:10}}>{p.handle}</div>
+                          <div className="mono" style={{fontSize:9}}>{p.handle}</div>
                         </div>
-                        {i===0 && <span className="badge badge-neon" style={{marginLeft:6}}>CHAMP</span>}
+                        {i===0 && <span className="badge badge-neon" style={{marginLeft:4,flexShrink:0}}>CHAMP</span>}
+                        {p.id === currentUser && <span className="badge badge-dim" style={{marginLeft:4,flexShrink:0}}>YOU</span>}
                       </div>
                     </td>
                     <td><span className="lb-val">{p.wins}</span></td>
-                    <td><span className="lb-val" style={{color:'var(--text3)'}}>{p.losses}</span></td>
+                    <td className="lb-hide"><span className="lb-val" style={{color:'var(--text3)'}}>{p.losses}</span></td>
                     <td><span className="lb-val lb-pct">{winPct(p)}%</span></td>
-                    <td>
-                      <span className={p.streak > 0 ? 'lb-streak-pos' : p.streak < 0 ? 'lb-streak-neg' : 'meta'}>
-                        {streakLabel(p.streak)}
-                      </span>
-                    </td>
+                    <td><span className={p.streak>0?'lb-sp':p.streak<0?'lb-sn':'mono'}>{streak(p.streak)}</span></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          <div className="section-head" style={{marginBottom:12}}>
-            <h2>Recent Results</h2>
-            <div className="section-head-line"></div>
-            <button className="section-head-action" onClick={() => setPage('results')}>View all →</button>
+          <div className="sh">
+            <h2>Recent · {sport}</h2>
+            <div className="sh-line"></div>
+            <button className="sh-act" onClick={() => setPage('results')}>All →</button>
           </div>
           {recent.length === 0
-            ? <div className="empty-state">No {sport} matches yet. Time to play!</div>
+            ? <div className="empty">No {sport} matches yet</div>
             : recent.map(m => <MatchRow key={m.id} match={m} players={players} />)}
         </div>
 
-        {/* RIGHT — champion + banter */}
+        {/* RIGHT */}
         <div>
-          {top && (
-            <>
-              <div className="section-head"><h2>Current Champion</h2><div className="section-head-line"></div></div>
-              <div className="champion-card" style={{marginBottom:16}}>
-                <div className="champion-label">RANKED #1</div>
-                <div style={{display:'flex',gap:14,alignItems:'center'}}>
-                  <Avatar player={top} size={56} onClick={() => { setViewPlayer(top.id); setPage('profile'); }} />
-                  <div>
-                    <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:900,fontSize:22,textTransform:'uppercase',color:'var(--text)',lineHeight:1}}>{top.name}</div>
-                    <div className="meta" style={{marginTop:3}}>{top.handle}</div>
-                    {top.bio && <div style={{fontSize:13,color:'var(--text2)',marginTop:4,fontStyle:'italic'}}>{top.bio}</div>}
-                  </div>
-                </div>
-                <div className="champion-stat-row">
-                  {[['Wins',top.wins,true],['Losses',top.losses,false],['Win %',winPct(top)+'%',true],['Streak',streakLabel(top.streak),top.streak>=0]].map(([l,v,pos]) => (
-                    <div key={l} className="champion-stat">
-                      <span className="champion-stat-val" style={{color: pos ? 'var(--neon)' : 'var(--neon3)'}}>{v}</span>
-                      <span className="champion-stat-lbl">{l}</span>
-                    </div>
-                  ))}
+          {top && <>
+            <div className="sh"><h2>Current Champion</h2><div className="sh-line"></div></div>
+            <div className="champ-card">
+              <div className="champ-lbl">RANKED #1</div>
+              <div style={{display:'flex',gap:12,alignItems:'center'}}>
+                <Av player={top} size={50} onClick={() => { setViewPlayer(top.id); setPage('profile'); }} />
+                <div>
+                  <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:900,fontSize:20,textTransform:'uppercase',color:'#f0f0f5',lineHeight:1}}>{top.name}</div>
+                  <div className="mono" style={{marginTop:3}}>{top.handle}</div>
+                  {top.bio && <div style={{fontSize:12,color:'#9898a8',marginTop:5,fontStyle:'italic'}}>{top.bio}</div>}
                 </div>
               </div>
-            </>
-          )}
+              <div className="champ-stats">
+                {[['Wins',top.wins],['Losses',top.losses],['Win%',winPct(top)+'%'],['Streak',streak(top.streak)]].map(([l,v]) => (
+                  <div key={l} style={{textAlign:'center'}}>
+                    <span className="champ-val">{v}</span>
+                    <span className="champ-lbl2">{l}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>}
 
-          <div className="section-head" style={{marginBottom:12}}>
-            <h2>Hot Takes</h2>
-            <div className="section-head-line"></div>
-            <button className="section-head-action" onClick={() => setPage('dispatch')}>All →</button>
-          </div>
-          <div className="card" style={{padding:'4px 16px'}}>
-            {topBanter.map(b => {
+          <div className="sh"><h2>Hot Takes</h2><div className="sh-line"></div><button className="sh-act" onClick={() => setPage('dispatch')}>All →</button></div>
+          <div className="card" style={{padding:'2px 14px'}}>
+            {topChat.map(b => {
               const p = players.find(x => x.id === b.playerId);
               if (!p) return null;
               return (
-                <div key={b.id} className="banter-post">
-                  <div className="banter-meta">
-                    <Avatar player={p} size={22} onClick={() => { setViewPlayer(p.id); setPage('profile'); }} />
-                    <span className="banter-author" onClick={() => { setViewPlayer(p.id); setPage('profile'); }}>{p.name}</span>
-                    <span className="banter-time">{b.time}</span>
+                <div key={b.id} className="bp">
+                  <div className="bp-meta">
+                    <Av player={p} size={22} onClick={() => { setViewPlayer(p.id); setPage('profile'); }} />
+                    <span className="bp-author">{p.name.split(' ')[0]}</span>
+                    <span className="bp-time">{b.time}</span>
                   </div>
-                  <div className="banter-text">{b.text}</div>
+                  <div className="bp-text">{b.text}</div>
                 </div>
               );
             })}
@@ -242,86 +443,76 @@ function ScoreboardPage({ players, matches, sport, setPage, setViewPlayer, bante
 }
 
 function MatchRow({ match, players }) {
-  const getName = ids => ids.map(id => { const p = players.find(x=>x.id===id); return p ? p.name.split(' ')[0] : '?'; }).join(' & ');
+  const name = ids => ids.map(id => { const p = players.find(x=>x.id===id); return p ? p.name.split(' ')[0] : '?'; }).join(' & ');
   const w1 = match.score1 > match.score2;
   return (
-    <div className="card" style={{marginBottom:8,padding:'12px 16px'}}>
-      <div style={{display:'flex',alignItems:'center',gap:10}}>
-        <div style={{flex:1}}>
-          <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:14,textTransform:'uppercase',color:w1?'var(--text)':'var(--text3)'}}>{getName(match.team1)}</div>
-        </div>
-        <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:900,fontSize:28,display:'flex',gap:4,alignItems:'center',minWidth:80,justifyContent:'center'}}>
-          <span style={{color:w1?'var(--neon)':'var(--text3)'}}>{match.score1}</span>
-          <span style={{color:'var(--bg4)',fontSize:16}}>–</span>
-          <span style={{color:!w1?'var(--neon)':'var(--text3)'}}>{match.score2}</span>
-        </div>
-        <div style={{flex:1,textAlign:'right'}}>
-          <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:14,textTransform:'uppercase',color:!w1?'var(--text)':'var(--text3)'}}>{getName(match.team2)}</div>
-        </div>
+    <div className="card match-row" style={{marginBottom:6}}>
+      <div className="match-scores">
+        <span className={`match-team${w1?'':' dim'}`}>{name(match.team1)}</span>
+        <span className="match-snum" style={{color:w1?'var(--neon)':'var(--text3)'}}>{match.score1}</span>
+        <span className="match-sep">–</span>
+        <span className="match-snum" style={{color:!w1?'var(--neon)':'var(--text3)'}}>{match.score2}</span>
+        <span className={`match-team${!w1?'':' dim'}`} style={{textAlign:'right'}}>{name(match.team2)}</span>
       </div>
       <div style={{display:'flex',justifyContent:'space-between',marginTop:4,gap:8}}>
-        <span className="meta">{fmtDate(match.date)} · {match.sport}</span>
-        {match.note && <span className="meta" style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textAlign:'right'}}>{match.note}</span>}
+        <span className="mono">{fmtDate(match.date)} · {match.sport}</span>
+        {match.note && <span className="mono" style={{maxWidth:170,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textAlign:'right'}}>{match.note}</span>}
       </div>
     </div>
   );
 }
 
-// ─── ROSTER PAGE ──────────────────────────────────────────────────────────────
-function RosterPage({ players, setPlayers, setViewPlayer, setPage }) {
+// ─── ROSTER ───────────────────────────────────────────────────────────────────
+function RosterPage({ data, setData, setViewPlayer, setPage, currentUser, pushUpdate }) {
+  const { players } = data;
   const [showAdd, setShowAdd] = useState(false);
   const sorted = [...players].sort((a,b) => b.wins - a.wins);
 
+  const addPlayer = async (p) => {
+    const next = { ...data, players: [...data.players, p] };
+    setData(next);
+    await pushUpdate(next);
+    setShowAdd(false);
+  };
+
   return (
     <div className="page">
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:20}}>
-        <div>
-          <div className="kicker">Season 2025</div>
-          <div className="hed-xl">THE <span className="accent">ROSTER</span></div>
-        </div>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add Player</button>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:18}}>
+        <div><div className="kicker">Season 2025</div><div className="hed">THE <span className="a">ROSTER</span></div></div>
+        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add</button>
       </div>
-
       <div className="grid-4">
-        {sorted.map(p => (
-          <PlayerCard key={p.id} player={p} onClick={() => { setViewPlayer(p.id); setPage('profile'); }} />
-        ))}
+        {sorted.map(p => <PlayerCard key={p.id} player={p} currentUser={currentUser} onClick={() => { setViewPlayer(p.id); setPage('profile'); }} />)}
       </div>
-
-      {showAdd && <AddPlayerModal onClose={() => setShowAdd(false)} onAdd={p => { setPlayers(prev => [...prev, p]); setShowAdd(false); }} players={players} />}
+      {showAdd && <AddPlayerModal onClose={() => setShowAdd(false)} onAdd={addPlayer} players={players} />}
     </div>
   );
 }
 
-function PlayerCard({ player, onClick }) {
-  const accentColor = player.streak > 2 ? 'var(--neon)' : player.streak < -2 ? 'var(--neon3)' : 'var(--border)';
+function PlayerCard({ player, onClick, currentUser }) {
+  const hot  = player.streak > 2;
+  const cold = player.streak < -2;
   return (
-    <div className="player-card" onClick={onClick}>
-      <div className="player-card-top" style={{background:accentColor}}></div>
-      <div className="player-card-body">
+    <div className="pc" onClick={onClick}>
+      <div className="pc-stripe" style={{background: hot?'#c8ff00': cold?'#ff3d71':'rgba(255,255,255,0.06)'}}></div>
+      <div className="pc-body">
         <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
-          <Avatar player={player} size={44} />
-          <div>
-            <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:16,textTransform:'uppercase',color:'var(--text)',lineHeight:1}}>{player.name}</div>
-            <div className="meta" style={{fontSize:10,marginTop:2}}>{player.handle}</div>
+          <Av player={player} size={40} />
+          <div style={{minWidth:0}}>
+            <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:15,textTransform:'uppercase',color:'#f0f0f5',lineHeight:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{player.name}</div>
+            <div className="mono" style={{fontSize:10,marginTop:2}}>{player.handle}</div>
           </div>
         </div>
-        {player.bio && <div style={{fontSize:12,color:'var(--text3)',fontStyle:'italic',marginBottom:8,lineHeight:1.4}}>{player.bio}</div>}
-        <div className="chip chip-dim" style={{fontSize:10,display:'inline-flex'}}>{player.favSport}</div>
+        {player.bio && <div style={{fontSize:12,color:'#5a5a6e',fontStyle:'italic',marginBottom:8,lineHeight:1.4,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{player.bio}</div>}
+        <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+          <span className="chip chip-dim">{player.favSport}</span>
+          {player.id === currentUser && <span className="chip chip-neon">You</span>}
+        </div>
       </div>
-      <div className="player-card-stats">
-        <div className="player-stat">
-          <span className="player-stat-val neon">{player.wins}</span>
-          <span className="player-stat-lbl">Wins</span>
-        </div>
-        <div className="player-stat">
-          <span className="player-stat-val">{winPct(player)}%</span>
-          <span className="player-stat-lbl">Win%</span>
-        </div>
-        <div className="player-stat">
-          <span className={`player-stat-val ${player.streak > 0 ? 'neon' : player.streak < 0 ? 'red' : ''}`}>{streakLabel(player.streak)}</span>
-          <span className="player-stat-lbl">Streak</span>
-        </div>
+      <div className="pc-stats">
+        <div className="pc-stat"><span className="pc-val" style={{color:'#c8ff00'}}>{player.wins}</span><span className="pc-lbl">Wins</span></div>
+        <div className="pc-stat"><span className="pc-val">{winPct(player)}%</span><span className="pc-lbl">Win%</span></div>
+        <div className="pc-stat"><span className="pc-val" style={{color:player.streak>0?'#c8ff00':player.streak<0?'#ff3d71':'#5a5a6e'}}>{streak(player.streak)}</span><span className="pc-lbl">Streak</span></div>
       </div>
     </div>
   );
@@ -329,28 +520,20 @@ function PlayerCard({ player, onClick }) {
 
 function AddPlayerModal({ onClose, onAdd, players }) {
   const [form, setForm] = useState({ name:'', handle:'', bio:'', favSport:SPORTS[0] });
-  const usedColors = players.map(p => p.color);
-  const availColor = AVATAR_COLORS.find(c => !usedColors.includes(c)) || AVATAR_COLORS[players.length % AVATAR_COLORS.length];
-
   const submit = () => {
     if (!form.name.trim()) return;
-    onAdd({
-      id: Date.now(), name: form.name.trim(),
-      handle: form.handle || '@' + form.name.split(' ')[0].toLowerCase(),
-      bio: form.bio, initials: getInitials(form.name), color: availColor,
-      wins: 0, losses: 0, streak: 0, favSport: form.favSport, pfp: null
-    });
+    onAdd({ id:Date.now(), name:form.name.trim(), handle:form.handle||'@'+form.name.split(' ')[0].toLowerCase(), bio:form.bio, initials:initials(form.name), wins:0, losses:0, streak:0, favSport:form.favSport, pinHash:null });
   };
-
   return (
-    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-bg" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="modal">
-        <div className="modal-title">Add to the Roster</div>
-        <div className="form-field"><label>Full Name *</label><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="e.g. Jordan Blake" /></div>
-        <div className="form-field"><label>Handle</label><input type="text" value={form.handle} onChange={e=>setForm({...form,handle:e.target.value})} placeholder="@handle" /></div>
-        <div className="form-field"><label>Bio / Tagline</label><input type="text" value={form.bio} onChange={e=>setForm({...form,bio:e.target.value})} placeholder="One line. Make it count." /></div>
-        <div className="form-field"><label>Favourite Sport</label><select value={form.favSport} onChange={e=>setForm({...form,favSport:e.target.value})}>{SPORTS.map(s=><option key={s}>{s}</option>)}</select></div>
-        <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:8}}>
+        <div className="modal-title">Add to Roster</div>
+        <div className="ff"><label>Full Name *</label><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="e.g. Jordan Blake" /></div>
+        <div className="ff"><label>Handle</label><input type="text" value={form.handle} onChange={e=>setForm({...form,handle:e.target.value})} placeholder="@handle" /></div>
+        <div className="ff"><label>Bio / Tagline</label><input type="text" value={form.bio} onChange={e=>setForm({...form,bio:e.target.value})} placeholder="One line. Make it count." /></div>
+        <div className="ff"><label>Favourite Sport</label><select value={form.favSport} onChange={e=>setForm({...form,favSport:e.target.value})}>{SPORTS.map(s=><option key={s}>{s}</option>)}</select></div>
+        <div style={{fontFamily:'DM Mono,monospace',fontSize:10,color:'#5a5a6e',marginBottom:14,lineHeight:1.6}}>New player will be prompted to set a 4-digit PIN on their first sign-in.</div>
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
           <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary btn-sm" onClick={submit}>Add Player</button>
         </div>
@@ -359,161 +542,118 @@ function AddPlayerModal({ onClose, onAdd, players }) {
   );
 }
 
-// ─── RESULTS PAGE ─────────────────────────────────────────────────────────────
-function ResultsPage({ matches, players, sport, setMatches, setPlayers }) {
+// ─── RESULTS ──────────────────────────────────────────────────────────────────
+function ResultsPage({ data, setData, sport, pushUpdate }) {
+  const { players, matches } = data;
   const [showAdd, setShowAdd] = useState(false);
-  const [activeTab, setActiveTab] = useState('all');
+  const [filter, setFilter]   = useState('all');
+  const filtered = [...matches].filter(m => filter==='all'||m.sport===filter).sort((a,b)=>b.date.localeCompare(a.date));
+  const name = ids => ids.map(id=>{const p=players.find(x=>x.id===id);return p?p.name.split(' ')[0]:'?';}).join(' & ');
 
-  const filtered = matches
-    .filter(m => activeTab === 'all' || m.sport === activeTab)
-    .sort((a,b) => b.date.localeCompare(a.date));
-
-  const getName = ids => ids.map(id => { const p = players.find(x=>x.id===id); return p ? p.name.split(' ')[0] : '?'; }).join(' & ');
+  const logMatch = async (m) => {
+    const nextPlayers = players.map(p => {
+      const inT1=m.team1.includes(p.id), inT2=m.team2.includes(p.id);
+      if (!inT1&&!inT2) return p;
+      const won=(inT1&&m.score1>m.score2)||(inT2&&m.score2>m.score1);
+      return {...p, wins:p.wins+(won?1:0), losses:p.losses+(!won?1:0), streak:won?(p.streak>=0?p.streak+1:1):(p.streak<=0?p.streak-1:-1)};
+    });
+    const next = {...data, matches:[m,...matches], players:nextPlayers};
+    setData(next);
+    await pushUpdate(next);
+    setShowAdd(false);
+  };
 
   return (
     <div className="page">
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:20}}>
-        <div>
-          <div className="kicker">All sports</div>
-          <div className="hed-xl">MATCH <span className="accent">RESULTS</span></div>
-        </div>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Log Match</button>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:16}}>
+        <div><div className="kicker">All time</div><div className="hed">MATCH <span className="a">RESULTS</span></div></div>
+        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Log</button>
       </div>
 
-      {/* Sport filter tabs */}
-      <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:16}}>
-        {['all', ...SPORTS].map(s => (
-          <button key={s} className={`btn btn-sm${activeTab===s?' btn-primary':' btn-ghost'}`} onClick={() => setActiveTab(s)}>
-            {s === 'all' ? 'All Sports' : s}
-          </button>
-        ))}
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}} className="sport-row">
+        <span className="sport-lbl">Filter</span>
+        <select className="sport-sel" value={filter} onChange={e=>setFilter(e.target.value)}>
+          <option value="all">All Sports</option>
+          {SPORTS.map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
       </div>
 
-      {filtered.length === 0
-        ? <div className="empty-state">No {activeTab === 'all' ? '' : activeTab + ' '}matches logged yet.</div>
-        : (
-          <div className="card">
-            <table className="results-table">
-              <thead>
-                <tr>
-                  <th>Date</th><th>Sport</th><th>Team 1</th><th style={{textAlign:'center'}}>Score</th><th>Team 2</th><th>Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(m => {
-                  const w1 = m.score1 > m.score2;
-                  return (
-                    <tr key={m.id}>
-                      <td className="meta">{fmtDate(m.date)}</td>
-                      <td><span className="result-sport-badge">{SPORT_ICONS[m.sport]||m.sport.slice(0,3).toUpperCase()}</span></td>
-                      <td style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:w1?700:400,fontSize:14,textTransform:'uppercase',color:w1?'var(--text)':'var(--text3)'}}>{getName(m.team1)}</td>
-                      <td style={{textAlign:'center',fontFamily:'Barlow Condensed,sans-serif',fontWeight:900,fontSize:20,whiteSpace:'nowrap'}}>
-                        <span style={{color:w1?'var(--neon)':'var(--text3)'}}>{m.score1}</span>
-                        <span style={{color:'var(--bg4)',margin:'0 4px',fontSize:14}}>–</span>
-                        <span style={{color:!w1?'var(--neon)':'var(--text3)'}}>{m.score2}</span>
-                      </td>
-                      <td style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:!w1?700:400,fontSize:14,textTransform:'uppercase',color:!w1?'var(--text)':'var(--text3)'}}>{getName(m.team2)}</td>
-                      <td className="meta" style={{maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.note}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )
+      {filtered.length===0
+        ? <div className="empty">No matches yet — log one!</div>
+        : <div className="card"><table className="rt">
+            <thead><tr>
+              <th>Date</th><th>Sport</th><th>Team 1</th><th style={{textAlign:'center'}}>Score</th><th>Team 2</th><th className="rt-hide">Notes</th>
+            </tr></thead>
+            <tbody>
+              {filtered.map(m => {
+                const w1=m.score1>m.score2;
+                return (
+                  <tr key={m.id}>
+                    <td className="mono">{fmtDate(m.date)}</td>
+                    <td><span className="sbadge">{SPORT_ICONS[m.sport]||m.sport.slice(0,3)}</span></td>
+                    <td style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:w1?700:400,fontSize:13,textTransform:'uppercase',color:w1?'#f0f0f5':'#5a5a6e',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name(m.team1)}</td>
+                    <td style={{textAlign:'center',whiteSpace:'nowrap'}}>
+                      <span style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:900,fontSize:18,color:w1?'#c8ff00':'#5a5a6e'}}>{m.score1}</span>
+                      <span style={{color:'#242429',fontFamily:'Barlow Condensed,sans-serif',margin:'0 4px'}}>–</span>
+                      <span style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:900,fontSize:18,color:!w1?'#c8ff00':'#5a5a6e'}}>{m.score2}</span>
+                    </td>
+                    <td style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:!w1?700:400,fontSize:13,textTransform:'uppercase',color:!w1?'#f0f0f5':'#5a5a6e',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name(m.team2)}</td>
+                    <td className="rt-hide mono" style={{maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.note}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table></div>
       }
-
-      {showAdd && (
-        <LogMatchModal players={players} onClose={() => setShowAdd(false)}
-          onLog={m => {
-            setMatches(prev => [m, ...prev]);
-            setPlayers(prev => prev.map(p => {
-              const inT1 = m.team1.includes(p.id);
-              const inT2 = m.team2.includes(p.id);
-              if (!inT1 && !inT2) return p;
-              const won = (inT1 && m.score1 > m.score2) || (inT2 && m.score2 > m.score1);
-              return {
-                ...p,
-                wins: p.wins + (won ? 1 : 0),
-                losses: p.losses + (!won ? 1 : 0),
-                streak: won ? (p.streak >= 0 ? p.streak + 1 : 1) : (p.streak <= 0 ? p.streak - 1 : -1)
-              };
-            }));
-            setShowAdd(false);
-          }} />
-      )}
+      {showAdd && <LogMatchModal players={players} onClose={()=>setShowAdd(false)} onLog={logMatch} />}
     </div>
   );
 }
 
 function LogMatchModal({ players, onClose, onLog }) {
-  const [form, setForm] = useState({ sport:SPORTS[0], date:today(), team1:[], team2:[], score1:'', score2:'', note:'' });
-
-  const togglePlayer = (team, pid) => {
-    const other = team === 1 ? 'team2' : 'team1';
+  const [form, setForm] = useState({sport:SPORTS[0],date:today(),team1:[],team2:[],score1:'',score2:'',note:''});
+  const toggle = (team, pid) => {
+    const other = team===1?'team2':'team1';
     if (form[other].includes(pid)) return;
-    const key = team === 1 ? 'team1' : 'team2';
-    setForm(f => ({ ...f, [key]: f[key].includes(pid) ? f[key].filter(x=>x!==pid) : [...f[key], pid] }));
+    const k = team===1?'team1':'team2';
+    setForm(f=>({...f,[k]:f[k].includes(pid)?f[k].filter(x=>x!==pid):[...f[k],pid]}));
   };
-
   const submit = () => {
-    if (!form.team1.length || !form.team2.length) return alert('Each team needs at least one player.');
-    if (form.score1 === '' || form.score2 === '') return alert('Enter the final score.');
-    onLog({ ...form, id:Date.now(), score1:parseInt(form.score1), score2:parseInt(form.score2), team1:[...form.team1], team2:[...form.team2] });
+    if (!form.team1.length||!form.team2.length) return alert('Each team needs at least one player.');
+    if (form.score1===''||form.score2==='') return alert('Enter the final score.');
+    onLog({...form,id:Date.now(),score1:parseInt(form.score1),score2:parseInt(form.score2),team1:[...form.team1],team2:[...form.team2]});
   };
-
   return (
-    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-bg" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="modal">
         <div className="modal-title">Log a Match</div>
         <div className="grid-2" style={{marginBottom:12}}>
-          <div className="form-field" style={{marginBottom:0}}>
-            <label>Sport</label>
-            <select value={form.sport} onChange={e=>setForm({...form,sport:e.target.value})}>
-              {SPORTS.map(s=><option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="form-field" style={{marginBottom:0}}>
-            <label>Date</label>
-            <input type="text" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} placeholder="YYYY-MM-DD" />
-          </div>
+          <div className="ff" style={{marginBottom:0}}><label>Sport</label><select value={form.sport} onChange={e=>setForm({...form,sport:e.target.value})}>{SPORTS.map(s=><option key={s}>{s}</option>)}</select></div>
+          <div className="ff" style={{marginBottom:0}}><label>Date</label><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} /></div>
         </div>
-
-        <div className="form-field">
-          <label>Select Players</label>
-          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+        <div className="ff">
+          <label>Pick Teams</label>
+          <div style={{display:'flex',flexDirection:'column',gap:5}}>
             {players.map(p => {
-              const inT1 = form.team1.includes(p.id);
-              const inT2 = form.team2.includes(p.id);
+              const inT1=form.team1.includes(p.id),inT2=form.team2.includes(p.id);
               return (
                 <div key={p.id} style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:6,alignItems:'center'}}>
-                  <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:600,fontSize:14,textTransform:'uppercase',color:inT1?'var(--neon2)':inT2?'var(--neon3)':'var(--text3)'}}>{p.name}</div>
-                  <button onClick={() => togglePlayer(1,p.id)} className={`btn btn-sm${inT1?' btn-primary':' btn-ghost'}`} style={{padding:'4px 10px',borderColor:inT1?'var(--neon2)':'var(--border2)',color:inT1?'var(--neon2)':'var(--text3)',background:inT1?'rgba(0,229,255,0.1)':'none',fontSize:11}}>T1</button>
-                  <button onClick={() => togglePlayer(2,p.id)} className="btn btn-sm btn-ghost" style={{padding:'4px 10px',borderColor:inT2?'var(--neon3)':'var(--border2)',color:inT2?'var(--neon3)':'var(--text3)',background:inT2?'rgba(255,61,113,0.1)':'none',fontSize:11}}>T2</button>
+                  <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:600,fontSize:14,textTransform:'uppercase',color:inT1?'#00e5ff':inT2?'#ff3d71':'#5a5a6e'}}>{p.name}</div>
+                  <button onClick={()=>toggle(1,p.id)} style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:11,fontWeight:700,letterSpacing:'0.1em',textTransform:'uppercase',padding:'4px 10px',borderRadius:4,cursor:'pointer',border:'1px solid',borderColor:inT1?'#00e5ff':'rgba(255,255,255,0.13)',background:inT1?'rgba(0,229,255,0.1)':'none',color:inT1?'#00e5ff':'#5a5a6e',transition:'all 0.15s'}}>T1</button>
+                  <button onClick={()=>toggle(2,p.id)} style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:11,fontWeight:700,letterSpacing:'0.1em',textTransform:'uppercase',padding:'4px 10px',borderRadius:4,cursor:'pointer',border:'1px solid',borderColor:inT2?'#ff3d71':'rgba(255,255,255,0.13)',background:inT2?'rgba(255,61,113,0.1)':'none',color:inT2?'#ff3d71':'#5a5a6e',transition:'all 0.15s'}}>T2</button>
                 </div>
               );
             })}
           </div>
-          <div className="meta" style={{marginTop:8}}>
-            Team 1: {form.team1.map(id=>players.find(p=>p.id===id)?.name.split(' ')[0]).join(', ')||'none'} &nbsp;|&nbsp;
-            Team 2: {form.team2.map(id=>players.find(p=>p.id===id)?.name.split(' ')[0]).join(', ')||'none'}
-          </div>
+          <div className="mono" style={{marginTop:8}}>T1: {form.team1.map(id=>players.find(p=>p.id===id)?.name.split(' ')[0]).join(', ')||'—'} &nbsp;|&nbsp; T2: {form.team2.map(id=>players.find(p=>p.id===id)?.name.split(' ')[0]).join(', ')||'—'}</div>
         </div>
-
         <div style={{display:'grid',gridTemplateColumns:'1fr auto 1fr',gap:10,alignItems:'end',marginBottom:12}}>
-          <div className="form-field" style={{marginBottom:0}}>
-            <label style={{textAlign:'center'}}>Team 1 Score</label>
-            <input type="number" value={form.score1} onChange={e=>setForm({...form,score1:e.target.value})} min="0" style={{textAlign:'center',fontSize:22,fontFamily:'Barlow Condensed,sans-serif',fontWeight:700}} />
-          </div>
-          <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:18,color:'var(--text3)',textAlign:'center',paddingBottom:10}}>VS</div>
-          <div className="form-field" style={{marginBottom:0}}>
-            <label style={{textAlign:'center'}}>Team 2 Score</label>
-            <input type="number" value={form.score2} onChange={e=>setForm({...form,score2:e.target.value})} min="0" style={{textAlign:'center',fontSize:22,fontFamily:'Barlow Condensed,sans-serif',fontWeight:700}} />
-          </div>
+          <div className="ff" style={{marginBottom:0}}><label style={{textAlign:'center'}}>T1 Score</label><input type="number" value={form.score1} onChange={e=>setForm({...form,score1:e.target.value})} min="0" style={{textAlign:'center',fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:22}} /></div>
+          <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:16,color:'#5a5a6e',paddingBottom:9,textAlign:'center'}}>VS</div>
+          <div className="ff" style={{marginBottom:0}}><label style={{textAlign:'center'}}>T2 Score</label><input type="number" value={form.score2} onChange={e=>setForm({...form,score2:e.target.value})} min="0" style={{textAlign:'center',fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:22}} /></div>
         </div>
-
-        <div className="form-field"><label>Post-match notes</label><input type="text" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="What happened? Who choked?" /></div>
-        <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:8}}>
+        <div className="ff"><label>Post-match note</label><input type="text" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Who cooked? Who choked?" /></div>
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
           <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary btn-sm" onClick={submit}>Log It</button>
         </div>
@@ -522,181 +662,185 @@ function LogMatchModal({ players, onClose, onLog }) {
   );
 }
 
-// ─── PROFILE PAGE ─────────────────────────────────────────────────────────────
-function ProfilePage({ playerId, players, setPlayers, matches, onBack }) {
+// ─── PROFILE ──────────────────────────────────────────────────────────────────
+function ProfilePage({ playerId, data, setData, onBack, currentUser, pushUpdate }) {
+  const { players, matches } = data;
   const player = players.find(p => p.id === playerId);
   if (!player) return <div className="page"><button className="back-btn" onClick={onBack}>← Back</button></div>;
-
+  const isMe = player.id === currentUser;
   const [editing, setEditing] = useState(false);
-  const [editBio, setEditBio] = useState(player.bio);
+  const [editBio, setEditBio]       = useState(player.bio);
   const [editHandle, setEditHandle] = useState(player.handle);
-  const [pfpInput, setPfpInput] = useState('');
+  const [editSport, setEditSport]   = useState(player.favSport);
+  const [changePIN, setChangePIN]   = useState(false);
+  const [pin,  setPin]  = useState(['','','','']);
+  const [pin2, setPin2] = useState(['','','','']);
+  const [pinErr, setPinErr] = useState('');
+  const pinRefs  = [useRef(),useRef(),useRef(),useRef()];
+  const pin2Refs = [useRef(),useRef(),useRef(),useRef()];
 
-  const playerMatches = matches
-    .filter(m => m.team1.includes(player.id) || m.team2.includes(player.id))
-    .sort((a,b) => b.date.localeCompare(a.date));
+  const myMatches = [...matches].filter(m=>m.team1.includes(player.id)||m.team2.includes(player.id)).sort((a,b)=>b.date.localeCompare(a.date));
+  const sorted = [...players].sort((a,b)=>b.wins-a.wins);
+  const rank   = sorted.findIndex(p=>p.id===player.id)+1;
+  const name   = ids => ids.map(id=>{const p=players.find(x=>x.id===id);return p?p.name.split(' ')[0]:'?';}).join(' & ');
 
-  const getName = ids => ids.map(id => { const p = players.find(x=>x.id===id); return p ? p.name.split(' ')[0] : '?'; }).join(' & ');
-  const sorted = [...players].sort((a,b) => b.wins - a.wins);
-  const rank = sorted.findIndex(p => p.id === player.id) + 1;
+  const handlePinIn = (refs, arr, setArr, idx, val) => {
+    if (!/^\d*$/.test(val)) return;
+    const next=[...arr]; next[idx]=val.slice(-1); setArr(next); setPinErr('');
+    if (val&&idx<3) refs[idx+1].current?.focus();
+    if (!val&&idx>0) refs[idx-1].current?.focus();
+  };
 
-  const saveProfile = () => {
-    setPlayers(prev => prev.map(p => p.id===player.id ? {...p, bio:editBio, handle:editHandle, pfp:pfpInput||p.pfp} : p));
-    setEditing(false);
+  const saveProfile = async () => {
+    const next = {...data, players: players.map(p=>p.id===player.id?{...p,bio:editBio,handle:editHandle,favSport:editSport}:p)};
+    setData(next); await pushUpdate(next); setEditing(false);
+  };
+
+  const savePIN = async () => {
+    const code=pin.join(''), conf=pin2.join('');
+    if (code.length<4) { setPinErr('Enter all 4 digits'); return; }
+    if (code!==conf)   { setPinErr("PINs don't match"); return; }
+    const h = await hashPin(code);
+    const next = {...data, players: players.map(p=>p.id===player.id?{...p,pinHash:h}:p)};
+    setData(next); await pushUpdate(next); setChangePIN(false); setPin(['','','','']); setPin2(['','','','']);
   };
 
   return (
-    <div className="page" style={{maxWidth:860}}>
+    <div className="page" style={{maxWidth:800}}>
       <button className="back-btn" onClick={onBack}>← Back to Roster</button>
-
-      <div className="profile-header">
-        <Avatar player={player} size={72} />
+      <div className="profile-hdr">
+        <Av player={player} size={64} />
         <div style={{flex:1}}>
-          <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
-            <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:900,fontSize:32,textTransform:'uppercase',color:'var(--text)',lineHeight:1}}>{player.name}</div>
+          <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+            <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:900,fontSize:28,textTransform:'uppercase',color:'#f0f0f5',lineHeight:1}}>{player.name}</div>
             <span className="chip chip-neon">Rank #{rank}</span>
+            {isMe && <span className="chip chip-dim">You</span>}
           </div>
           {editing
-            ? <input type="text" value={editHandle} onChange={e=>setEditHandle(e.target.value)} style={{marginTop:6,fontSize:12,color:'var(--text3)'}} />
-            : <div className="meta" style={{marginTop:4}}>{player.handle} · {player.favSport}</div>}
+            ? <input type="text" value={editHandle} onChange={e=>setEditHandle(e.target.value)} style={{marginTop:8,fontSize:13}} />
+            : <div className="mono" style={{marginTop:5}}>{player.handle} · {player.favSport}</div>}
           {editing
-            ? <textarea value={editBio} onChange={e=>setEditBio(e.target.value)} style={{marginTop:8,fontSize:13,resize:'none',height:56}} rows={2} />
-            : <div style={{fontSize:13,color:'var(--text2)',marginTop:6,fontStyle:'italic'}}>{player.bio || 'No bio yet.'}</div>}
-          {editing && (
-            <div className="form-field" style={{marginTop:8,marginBottom:0}}>
-              <label>Photo URL</label>
-              <input type="text" value={pfpInput} onChange={e=>setPfpInput(e.target.value)} placeholder="Paste image URL" />
+            ? <>
+                <textarea value={editBio} onChange={e=>setEditBio(e.target.value)} style={{marginTop:8,fontSize:13,resize:'none',height:52}} rows={2} />
+                <div className="ff" style={{marginTop:8,marginBottom:0}}><label>Favourite Sport</label><select value={editSport} onChange={e=>setEditSport(e.target.value)}>{SPORTS.map(s=><option key={s}>{s}</option>)}</select></div>
+              </>
+            : <div style={{fontSize:13,color:'#9898a8',marginTop:6,fontStyle:'italic'}}>{player.bio||'No bio yet.'}</div>}
+          {isMe && (
+            <div style={{display:'flex',gap:6,marginTop:10,flexWrap:'wrap'}}>
+              {editing
+                ? <><button className="btn btn-primary btn-sm" onClick={saveProfile}>Save</button><button className="btn btn-ghost btn-sm" onClick={()=>setEditing(false)}>Cancel</button></>
+                : <><button className="btn btn-ghost btn-sm" onClick={()=>{setEditing(true);setEditBio(player.bio);setEditHandle(player.handle);setEditSport(player.favSport);}}>Edit Profile</button>
+                    <button className="btn btn-ghost btn-sm" onClick={()=>setChangePIN(!changePIN)}>{changePIN?'Cancel PIN':'Change PIN'}</button></>}
             </div>
           )}
-          <div style={{display:'flex',gap:6,marginTop:10}}>
-            {editing
-              ? <>
-                  <button className="btn btn-primary btn-sm" onClick={saveProfile}>Save</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>Cancel</button>
-                </>
-              : <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(true); setEditBio(player.bio); setEditHandle(player.handle); }}>Edit Profile</button>}
-          </div>
+          {isMe && changePIN && !editing && (
+            <div style={{marginTop:12,padding:14,background:'var(--bg3)',borderRadius:6,border:'1px solid rgba(255,255,255,0.07)'}}>
+              <div style={{fontFamily:'DM Mono,monospace',fontSize:10,letterSpacing:'0.1em',textTransform:'uppercase',color:'#5a5a6e',marginBottom:8}}>New PIN</div>
+              <div className="pin-row" style={{justifyContent:'flex-start',gap:6,marginBottom:8}}>
+                {pin.map((d,i)=><input key={i} ref={pinRefs[i]} className="pin-d" style={{width:42,height:48,fontSize:22}} type="password" inputMode="numeric" maxLength={1} value={d} onChange={e=>handlePinIn(pinRefs,pin,setPin,i,e.target.value)} onKeyDown={e=>{if(e.key==='Backspace'&&!pin[i]&&i>0)pinRefs[i-1].current?.focus();}} />)}
+              </div>
+              <div style={{fontFamily:'DM Mono,monospace',fontSize:10,letterSpacing:'0.1em',textTransform:'uppercase',color:'#5a5a6e',marginBottom:8}}>Confirm</div>
+              <div className="pin-row" style={{justifyContent:'flex-start',gap:6,marginBottom:10}}>
+                {pin2.map((d,i)=><input key={i} ref={pin2Refs[i]} className="pin-d" style={{width:42,height:48,fontSize:22}} type="password" inputMode="numeric" maxLength={1} value={d} onChange={e=>handlePinIn(pin2Refs,pin2,setPin2,i,e.target.value)} onKeyDown={e=>{if(e.key==='Enter')savePIN();if(e.key==='Backspace'&&!pin2[i]&&i>0)pin2Refs[i-1].current?.focus();}} />)}
+              </div>
+              {pinErr && <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:'#ff3d71',marginBottom:8}}>{pinErr}</div>}
+              <button className="btn btn-primary btn-sm" onClick={savePIN}>Save PIN</button>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="profile-stats">
-        {[['Wins',player.wins,'neon'],['Losses',player.losses,'red'],['Win %',winPct(player)+'%','neon'],['Streak',streakLabel(player.streak),player.streak>=0?'neon':'red']].map(([l,v,c]) => (
-          <div key={l} className="stat-block">
-            <span className={`stat-block-val ${c}`}>{v}</span>
-            <span className="stat-block-lbl">{l}</span>
-          </div>
+      <div className="p-stats">
+        {[['Wins',player.wins,'#c8ff00'],['Losses',player.losses,'#ff3d71'],['Win %',winPct(player)+'%','#00e5ff'],['Streak',streak(player.streak),player.streak>=0?'#c8ff00':'#ff3d71']].map(([l,v,c])=>(
+          <div key={l} className="stat-box"><span className="stat-val" style={{color:c}}>{v}</span><span className="stat-lbl">{l}</span></div>
         ))}
       </div>
 
-      <div className="section-head" style={{marginBottom:12}}>
-        <h2>Match History</h2>
-        <div className="section-head-line"></div>
-        <span className="meta">{playerMatches.length} matches</span>
-      </div>
-
-      {playerMatches.length === 0
-        ? <div className="empty-state">No matches recorded yet. Get out there!</div>
-        : (
-          <div className="card">
-            <table className="results-table">
-              <thead>
-                <tr><th>Date</th><th>Sport</th><th>Opponents</th><th style={{textAlign:'center'}}>Score</th><th>Result</th><th>Notes</th></tr>
-              </thead>
-              <tbody>
-                {playerMatches.map(m => {
-                  const inT1 = m.team1.includes(player.id);
-                  const won = (inT1 && m.score1 > m.score2) || (!inT1 && m.score2 > m.score1);
-                  const myScore = inT1 ? m.score1 : m.score2;
-                  const theirScore = inT1 ? m.score2 : m.score1;
-                  const opponents = inT1 ? m.team2 : m.team1;
-                  return (
-                    <tr key={m.id}>
-                      <td className="meta">{fmtDate(m.date)}</td>
-                      <td><span className="result-sport-badge">{SPORT_ICONS[m.sport]||m.sport.slice(0,3)}</span></td>
-                      <td style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:13,textTransform:'uppercase',color:'var(--text2)'}}>{getName(opponents)}</td>
-                      <td style={{textAlign:'center',fontFamily:'Barlow Condensed,sans-serif',fontWeight:900,fontSize:18,whiteSpace:'nowrap'}}>
-                        <span style={{color:won?'var(--neon)':'var(--neon3)'}}>{myScore}</span>
-                        <span style={{color:'var(--bg4)',margin:'0 4px',fontSize:13}}>–</span>
-                        <span style={{color:'var(--text3)'}}>{theirScore}</span>
-                      </td>
-                      <td><span className={`badge ${won?'badge-neon':'badge-red'}`}>{won?'WIN':'LOSS'}</span></td>
-                      <td className="meta" style={{maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.note}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )
+      <div className="sh" style={{marginBottom:12}}><h2>Match History</h2><div className="sh-line"></div><span className="mono">{myMatches.length} recorded</span></div>
+      {myMatches.length===0
+        ? <div className="empty">No matches yet — get out there!</div>
+        : <div className="card"><table className="rt">
+            <thead><tr><th>Date</th><th>Sport</th><th>Opponents</th><th style={{textAlign:'center'}}>Score</th><th>Result</th><th className="rt-hide">Note</th></tr></thead>
+            <tbody>
+              {myMatches.map(m=>{
+                const inT1=m.team1.includes(player.id);
+                const won=(inT1&&m.score1>m.score2)||(!inT1&&m.score2>m.score1);
+                const ms=inT1?m.score1:m.score2, ts=inT1?m.score2:m.score1;
+                const opp=inT1?m.team2:m.team1;
+                return (
+                  <tr key={m.id}>
+                    <td className="mono">{fmtDate(m.date)}</td>
+                    <td><span className="sbadge">{SPORT_ICONS[m.sport]||m.sport.slice(0,3)}</span></td>
+                    <td style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:13,textTransform:'uppercase',color:'#9898a8',maxWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name(opp)}</td>
+                    <td style={{textAlign:'center',whiteSpace:'nowrap'}}>
+                      <span style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:900,fontSize:18,color:won?'#c8ff00':'#ff3d71'}}>{ms}</span>
+                      <span style={{color:'#242429',fontFamily:'Barlow Condensed,sans-serif',margin:'0 3px'}}>–</span>
+                      <span style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:14,color:'#5a5a6e'}}>{ts}</span>
+                    </td>
+                    <td><span className={`badge ${won?'badge-neon':'badge-red'}`}>{won?'WIN':'LOSS'}</span></td>
+                    <td className="rt-hide mono" style={{maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.note}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table></div>
       }
     </div>
   );
 }
 
-// ─── VENUES PAGE ──────────────────────────────────────────────────────────────
-function VenuesPage({ venues, setVenues }) {
+// ─── VENUES ───────────────────────────────────────────────────────────────────
+function VenuesPage({ data, setData, pushUpdate }) {
+  const { venues } = data;
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name:'', address:'', sports:[], notes:'', rating:4, cost:'' });
-
-  const submitVenue = () => {
+  const [form, setForm] = useState({name:'',address:'',sports:[],notes:'',rating:4,cost:''});
+  const addVenue = async () => {
     if (!form.name.trim()) return;
-    setVenues(prev => [...prev, { ...form, id:Date.now(), sports:[...form.sports] }]);
-    setShowAdd(false);
-    setForm({ name:'', address:'', sports:[], notes:'', rating:4, cost:'' });
+    const next={...data,venues:[...venues,{...form,id:Date.now(),sports:[...form.sports]}]};
+    setData(next); await pushUpdate(next); setShowAdd(false); setForm({name:'',address:'',sports:[],notes:'',rating:4,cost:''});
   };
-
   return (
     <div className="page">
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:20}}>
-        <div>
-          <div className="kicker">Where we run it</div>
-          <div className="hed-xl">OUR <span className="accent">SPOTS</span></div>
-        </div>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add Venue</button>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:16}}>
+        <div><div className="kicker">Where we run it</div><div className="hed">OUR <span className="a">SPOTS</span></div></div>
+        <button className="btn btn-primary" onClick={()=>setShowAdd(true)}>+ Add</button>
       </div>
-
       <div className="grid-3">
-        {venues.map(v => (
-          <div key={v.id} className="venue-card">
-            <div className="venue-card-top">
-              <div>
-                <div className="venue-card-name">{v.name}</div>
-                <div className="venue-card-addr">{v.address}</div>
-              </div>
-              <div className="venue-cost">{v.cost}</div>
+        {venues.map(v=>(
+          <div key={v.id} className="vc">
+            <div className="vc-top">
+              <div><div className="vc-name">{v.name}</div><div className="vc-addr">{v.address}</div></div>
+              <span style={{fontFamily:'DM Mono,monospace',fontSize:11,color:'#c8ff00',flexShrink:0}}>{v.cost}</span>
             </div>
-            <div className="venue-card-body">{v.notes}</div>
-            <div className="venue-card-foot">
-              <div className="venue-tags">{v.sports.map(s=><span key={s} className="venue-tag">{s}</span>)}</div>
-              <span className="venue-rating">{'★'.repeat(v.rating)}{'☆'.repeat(5-v.rating)}</span>
+            <div className="vc-body">{v.notes}</div>
+            <div className="vc-foot">
+              <div style={{display:'flex',flexWrap:'wrap',gap:4}}>{v.sports.map(s=><span key={s} className="vc-tag">{s}</span>)}</div>
+              <span style={{fontFamily:'DM Mono,monospace',fontSize:11,color:'#ffb800',flexShrink:0}}>{'★'.repeat(v.rating)}{'☆'.repeat(5-v.rating)}</span>
             </div>
           </div>
         ))}
       </div>
-
       {showAdd && (
-        <div className="modal-backdrop" onClick={e => e.target===e.currentTarget && setShowAdd(false)}>
+        <div className="modal-bg" onClick={e=>e.target===e.currentTarget&&setShowAdd(false)}>
           <div className="modal">
             <div className="modal-title">Add a Venue</div>
-            <div className="form-field"><label>Venue Name *</label><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} /></div>
-            <div className="form-field"><label>Address</label><input type="text" value={form.address} onChange={e=>setForm({...form,address:e.target.value})} /></div>
-            <div className="form-field">
-              <label>Sports Played Here</label>
+            <div className="ff"><label>Name *</label><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} /></div>
+            <div className="ff"><label>Address</label><input type="text" value={form.address} onChange={e=>setForm({...form,address:e.target.value})} /></div>
+            <div className="ff">
+              <label>Sports</label>
               <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:4}}>
-                {SPORTS.map(s=>(
-                  <button key={s} onClick={()=>setForm(f=>({...f,sports:f.sports.includes(s)?f.sports.filter(x=>x!==s):[...f.sports,s]}))}
-                    className={`btn btn-sm${form.sports.includes(s)?' btn-primary':' btn-ghost'}`}>{s}</button>
-                ))}
+                {SPORTS.map(s=><button key={s} onClick={()=>setForm(f=>({...f,sports:f.sports.includes(s)?f.sports.filter(x=>x!==s):[...f.sports,s]}))}
+                  style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:11,fontWeight:700,letterSpacing:'0.1em',textTransform:'uppercase',padding:'5px 10px',borderRadius:4,cursor:'pointer',border:'1px solid',borderColor:form.sports.includes(s)?'#c8ff00':'rgba(255,255,255,0.13)',background:form.sports.includes(s)?'rgba(200,255,0,0.1)':'none',color:form.sports.includes(s)?'#c8ff00':'#5a5a6e',transition:'all 0.15s'}}>{s}</button>)}
               </div>
             </div>
-            <div className="form-field"><label>Notes / Tips</label><textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} rows={2} /></div>
+            <div className="ff"><label>Notes / Tips</label><textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} rows={2} /></div>
             <div className="grid-2">
-              <div className="form-field"><label>Rating (1–5)</label><input type="number" min="1" max="5" value={form.rating} onChange={e=>setForm({...form,rating:parseInt(e.target.value)})} /></div>
-              <div className="form-field"><label>Cost</label><input type="text" value={form.cost} onChange={e=>setForm({...form,cost:e.target.value})} placeholder="e.g. Free, $5/hr" /></div>
+              <div className="ff"><label>Rating (1–5)</label><input type="number" min="1" max="5" value={form.rating} onChange={e=>setForm({...form,rating:parseInt(e.target.value)||4})} /></div>
+              <div className="ff"><label>Cost</label><input type="text" value={form.cost} onChange={e=>setForm({...form,cost:e.target.value})} placeholder="Free, $5/hr…" /></div>
             </div>
-            <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:8}}>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowAdd(false)}>Cancel</button>
-              <button className="btn btn-primary btn-sm" onClick={submitVenue}>Add Venue</button>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+              <button className="btn btn-ghost btn-sm" onClick={()=>setShowAdd(false)}>Cancel</button>
+              <button className="btn btn-primary btn-sm" onClick={addVenue}>Add Venue</button>
             </div>
           </div>
         </div>
@@ -705,46 +849,33 @@ function VenuesPage({ venues, setVenues }) {
   );
 }
 
-// ─── RATIONS PAGE ─────────────────────────────────────────────────────────────
+// ─── RATIONS ──────────────────────────────────────────────────────────────────
 function RationsPage() {
   const [active, setActive] = useState(null);
   return (
     <div className="page">
-      <div style={{marginBottom:24}}>
-        <div className="kicker">High-protein recovery</div>
-        <div className="hed-xl">POST-GAME <span className="accent">FUEL</span></div>
-      </div>
-
-      <div className="grid-3" style={{marginBottom:28}}>
-        {POST_GAME_MEALS.map(meal => (
-          <div key={meal.id} className={`food-card${active===meal.id?' active':''}`} onClick={() => setActive(active===meal.id?null:meal.id)}>
-            <div className="food-card-top">
-              <div className="food-card-name">{meal.name}</div>
-              <span style={{fontSize:22}}>{meal.emoji}</span>
-            </div>
-            <div className="food-card-body">{meal.desc}</div>
-            <div className="food-macros">
-              <div className="food-macro"><span className="food-macro-val">{meal.protein}g</span><span className="food-macro-lbl">Protein</span></div>
-              <div className="food-macro"><span className="food-macro-val">{meal.carbs}g</span><span className="food-macro-lbl">Carbs</span></div>
-              <div className="food-macro"><span className="food-macro-val">{meal.fat}g</span><span className="food-macro-lbl">Fat</span></div>
+      <div style={{marginBottom:18}}><div className="kicker">High-protein recovery</div><div className="hed">POST-GAME <span className="a">FUEL</span></div></div>
+      <div className="grid-3" style={{marginBottom:20}}>
+        {POST_GAME_MEALS.map(m=>(
+          <div key={m.id} className={`fc${active===m.id?' on':''}`} onClick={()=>setActive(active===m.id?null:m.id)}>
+            <div className="fc-top"><div className="fc-name">{m.name}</div><span style={{fontSize:20}}>{m.emoji}</span></div>
+            <div className="fc-body">{m.desc}</div>
+            <div className="fc-macros">
+              <div className="fc-macro"><span className="fc-mval">{m.protein}g</span><span className="fc-mlbl">Protein</span></div>
+              <div className="fc-macro"><span className="fc-mval">{m.carbs}g</span><span className="fc-mlbl">Carbs</span></div>
+              <div className="fc-macro"><span className="fc-mval">{m.fat}g</span><span className="fc-mlbl">Fat</span></div>
             </div>
           </div>
         ))}
       </div>
-
-      <div className="section-head" style={{marginBottom:14}}>
-        <h2>Standing Orders</h2>
-        <div className="section-head-line"></div>
-      </div>
+      <div className="sh"><h2>Standing Orders</h2><div className="sh-line"></div></div>
       <div className="grid-3">
-        {[
-          { title:'The Non-Negotiable', body:'200g protein minimum on game day. No exceptions. No excuses. Your muscles have voted.' },
-          { title:'The Sacred Rule', body:'Whoever loses buys the rice. This has been the law since the first session and shall remain so.' },
-          { title:'The Recovery Code', body:'No ultra-processed junk after 3 sets of anything. You played too hard to insult the effort.' },
-        ].map(n => (
-          <div key={n.title} className="card" style={{padding:16}}>
-            <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:14,textTransform:'uppercase',color:'var(--neon)',letterSpacing:'0.05em',marginBottom:8}}>{n.title}</div>
-            <div style={{fontSize:13,color:'var(--text2)',lineHeight:1.55}}>{n.body}</div>
+        {[{t:'The Non-Negotiable',b:'200g protein minimum on game day. No exceptions. Your muscles have voted.'},
+          {t:'The Sacred Rule',b:'Whoever loses buys the rice. This has been the law since session one.'},
+          {t:'The Recovery Code',b:'No ultra-processed junk after 3 sets. You played too hard to insult the effort.'}].map(n=>(
+          <div key={n.t} className="card" style={{padding:14}}>
+            <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:13,textTransform:'uppercase',color:'#c8ff00',letterSpacing:'0.05em',marginBottom:7}}>{n.t}</div>
+            <div style={{fontSize:13,color:'#9898a8',lineHeight:1.55}}>{n.b}</div>
           </div>
         ))}
       </div>
@@ -752,64 +883,61 @@ function RationsPage() {
   );
 }
 
-// ─── DISPATCH PAGE ─────────────────────────────────────────────────────────────
-function DispatchPage({ banter, setBanter, players }) {
-  const [form, setForm] = useState({ playerId: players[0]?.id || '', text:'' });
-  const [reactions, setReactions] = useState(banter.reduce((acc,b) => ({...acc,[b.id]:b.reactions}),{}));
+// ─── DISPATCH ─────────────────────────────────────────────────────────────────
+function DispatchPage({ data, setData, currentUser, pushUpdate }) {
+  const { players, banter } = data;
+  const [text, setText] = useState('');
+  const [rxns, setRxns] = useState(() => banter.reduce((a,b)=>({...a,[b.id]:b.reactions}),{}));
+  useEffect(() => { setRxns(banter.reduce((a,b)=>({...a,[b.id]:b.reactions}),{})); }, [banter]);
 
-  const react = (id, emoji) => {
-    setReactions(prev => ({ ...prev, [id]: { ...prev[id], [emoji]: (prev[id]?.[emoji]||0) + 1 } }));
+  const post = async () => {
+    if (!text.trim()||!currentUser) return;
+    const nb={id:Date.now(),playerId:currentUser,text:text.trim(),time:'just now',reactions:{fire:0,skull:0,trophy:0}};
+    const next={...data,banter:[nb,...banter]};
+    setData(next); await pushUpdate(next); setText('');
   };
 
-  const post = () => {
-    if (!form.text.trim() || !form.playerId) return;
-    const nb = { id:Date.now(), playerId:parseInt(form.playerId), text:form.text.trim(), time:'just now', reactions:{fire:0,skull:0,trophy:0} };
-    setBanter(prev => [nb, ...prev]);
-    setReactions(prev => ({...prev, [nb.id]:{fire:0,skull:0,trophy:0}}));
-    setForm({...form, text:''});
+  const react = async (bid, emoji) => {
+    const nextRxns={...rxns,[bid]:{...rxns[bid],[emoji]:(rxns[bid]?.[emoji]||0)+1}};
+    setRxns(nextRxns);
+    const nextBanter=banter.map(b=>b.id===bid?{...b,reactions:nextRxns[bid]}:b);
+    const next={...data,banter:nextBanter};
+    setData(next); await pushUpdate(next);
   };
+
+  const me = players.find(p=>p.id===currentUser);
 
   return (
-    <div className="page" style={{maxWidth:760}}>
-      <div style={{marginBottom:24}}>
-        <div className="kicker">Crew chat · All access</div>
-        <div className="hed-xl">THE <span className="accent">DISPATCH</span></div>
-      </div>
-
-      <div className="add-form" style={{marginBottom:20}}>
+    <div className="page" style={{maxWidth:700}}>
+      <div style={{marginBottom:18}}><div className="kicker">Crew chat</div><div className="hed">THE <span className="a">DISPATCH</span></div></div>
+      <div className="add-form" style={{marginBottom:16}}>
         <div className="add-form-title">Drop a Take</div>
-        <div className="grid-2" style={{marginBottom:10}}>
-          <div className="form-field" style={{marginBottom:0}}>
-            <label>Who's talking</label>
-            <select value={form.playerId} onChange={e=>setForm({...form,playerId:parseInt(e.target.value)})}>
-              {players.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+        {me && (
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
+            <Av player={me} size={28} />
+            <span style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:14,textTransform:'uppercase',color:'#f0f0f5'}}>{me.name}</span>
           </div>
-          <div style={{display:'flex',alignItems:'flex-end'}}>
-            <button className="btn btn-primary" style={{width:'100%'}} onClick={post}>Post →</button>
-          </div>
-        </div>
-        <textarea value={form.text} onChange={e=>setForm({...form,text:e.target.value})} placeholder="Say something. Threaten someone. Celebrate yourself." rows={2} style={{resize:'none'}} />
+        )}
+        <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Say something. Threaten someone. Celebrate yourself." rows={2} style={{resize:'none',marginBottom:10}} />
+        <button className="btn btn-primary btn-sm" onClick={post} disabled={!text.trim()}>Post →</button>
       </div>
-
-      <div className="card" style={{padding:'4px 16px'}}>
-        {banter.map(b => {
-          const p = players.find(x => x.id === b.playerId);
+      <div className="card" style={{padding:'2px 14px'}}>
+        {banter.length===0 && <div className="empty">Nothing yet — be first to talk.</div>}
+        {banter.map(b=>{
+          const p=players.find(x=>x.id===b.playerId);
           if (!p) return null;
-          const r = reactions[b.id] || b.reactions;
+          const r=rxns[b.id]||b.reactions;
           return (
-            <div key={b.id} className="banter-post">
-              <div className="banter-meta">
-                <Avatar player={p} size={28} />
-                <span className="banter-author">{p.name}</span>
-                <span className="banter-time">{b.time}</span>
+            <div key={b.id} className="bp">
+              <div className="bp-meta">
+                <Av player={p} size={26} />
+                <span className="bp-author">{p.name}</span>
+                <span className="bp-time">{b.time}</span>
               </div>
-              <div className="banter-text">{b.text}</div>
-              <div className="banter-reactions">
-                {[['fire','🔥'],['skull','💀'],['trophy','🏆']].map(([k,e]) => (
-                  <button key={k} className="banter-react-btn" onClick={() => react(b.id, k)}>
-                    {e} {r[k]||0}
-                  </button>
+              <div className="bp-text">{b.text}</div>
+              <div className="bp-rxns">
+                {[['fire','🔥'],['skull','💀'],['trophy','🏆']].map(([k,e])=>(
+                  <button key={k} className="bp-btn" onClick={()=>react(b.id,k)}>{e} {r[k]||0}</button>
                 ))}
               </div>
             </div>
@@ -820,36 +948,83 @@ function DispatchPage({ banter, setBanter, players }) {
   );
 }
 
-// ─── APP ROOT ──────────────────────────────────────────────────────────────────
+// ─── APP ROOT ─────────────────────────────────────────────────────────────────
 function App() {
-  const [page, setPage] = useState('scoreboard');
-  const [sport, setSport] = useState('Badminton');
-  const [viewPlayerId, setViewPlayerId] = useState(null);
+  const [data,        setData]        = useState(null);
+  const [syncStatus,  setSyncStatus]  = useState('loading');
+  const [lastSync,    setLastSync]    = useState('');
+  const [page,        setPage]        = useState('scoreboard');
+  const [sport,       setSport]       = useState('Badminton');
+  const [viewPlayer,  setViewPlayer]  = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => getSession()?.id || null);
+  const pollRef = useRef(null);
 
-  const [players, setPlayers] = useState(() => load('rally_players', INITIAL_PLAYERS));
-  const [matches, setMatches] = useState(() => load('rally_matches', INITIAL_MATCHES));
-  const [venues, setVenues] = useState(() => load('rally_venues', INITIAL_VENUES));
-  const [banter, setBanter] = useState(() => load('rally_banter', INITIAL_BANTER));
+  // ── Initial load ──
+  useEffect(() => {
+    if (!isConfigured()) { setData(DEMO_DATA); setSyncStatus('demo'); return; }
+    load();
+    // Poll every 30s for updates from other devices
+    pollRef.current = setInterval(load, 30000);
+    return () => clearInterval(pollRef.current);
+  }, []);
 
-  useEffect(() => save('rally_players', players), [players]);
-  useEffect(() => save('rally_matches', matches), [matches]);
-  useEffect(() => save('rally_venues', venues), [venues]);
-  useEffect(() => save('rally_banter', banter), [banter]);
+  const load = async () => {
+    try {
+      setSyncStatus('syncing');
+      const d = await fetchData();
+      // Seed demo data if bin is empty
+      if (!d.players || d.players.length === 0) {
+        await pushData(DEMO_DATA);
+        setData(DEMO_DATA);
+      } else {
+        setData(d);
+      }
+      setSyncStatus('ok');
+      setLastSync(new Date().toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'}));
+    } catch(e) {
+      setSyncStatus('err');
+    }
+  };
 
-  const handleSetViewPlayer = id => { setViewPlayerId(id); setPage('profile'); };
+  const pushUpdate = async (next) => {
+    if (!isConfigured()) return;
+    try {
+      setSyncStatus('syncing');
+      await pushData(next);
+      setSyncStatus('ok');
+      setLastSync(new Date().toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'}));
+    } catch {
+      setSyncStatus('err');
+    }
+  };
+
+  const handleRegister = async (playerId, pinHash) => {
+    const next = {...data, players: data.players.map(p=>p.id===playerId?{...p,pinHash}:p)};
+    setData(next);
+    await pushUpdate(next);
+  };
+
+  const handleLogout = () => { clearSession(); setCurrentUser(null); setPage('scoreboard'); };
+
+  if (!isConfigured()) return <SetupScreen />;
+  if (!data) return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:12}}>
+      <div style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:42,fontWeight:900,color:'#c8ff00'}}>RALLY<span style={{color:'#5a5a6e',fontSize:18,fontWeight:400,letterSpacing:'0.14em'}}>.GG</span></div>
+      <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:'#5a5a6e',letterSpacing:'0.1em'}}>Loading…</div>
+    </div>
+  );
+  if (!currentUser) return <LoginScreen players={data.players} onLogin={setCurrentUser} onRegister={handleRegister} />;
 
   return (
     <>
-      <Header page={page} setPage={setPage} sport={sport} setSport={setSport} players={players} />
-      <div id="main">
-        {page === 'scoreboard' && <ScoreboardPage players={players} matches={matches} sport={sport} setPage={setPage} setViewPlayer={handleSetViewPlayer} banter={banter} />}
-        {page === 'roster' && <RosterPage players={players} setPlayers={setPlayers} setViewPlayer={handleSetViewPlayer} setPage={setPage} />}
-        {page === 'results' && <ResultsPage matches={matches} players={players} sport={sport} setMatches={setMatches} setPlayers={setPlayers} />}
-        {page === 'venues' && <VenuesPage venues={venues} setVenues={setVenues} />}
-        {page === 'rations' && <RationsPage />}
-        {page === 'dispatch' && <DispatchPage banter={banter} setBanter={setBanter} players={players} />}
-        {page === 'profile' && viewPlayerId && <ProfilePage playerId={viewPlayerId} players={players} setPlayers={setPlayers} matches={matches} onBack={() => setPage('roster')} />}
-      </div>
+      <Header page={page} setPage={setPage} players={data.players} currentUser={currentUser} onLogout={handleLogout} syncStatus={syncStatus} lastSync={lastSync} />
+      {page==='scoreboard' && <ScoreboardPage data={data} sport={sport} setSport={setSport} setPage={setPage} setViewPlayer={setViewPlayer} setData={setData} currentUser={currentUser} />}
+      {page==='roster'     && <RosterPage data={data} setData={setData} setViewPlayer={setViewPlayer} setPage={setPage} currentUser={currentUser} pushUpdate={pushUpdate} />}
+      {page==='results'    && <ResultsPage data={data} setData={setData} sport={sport} pushUpdate={pushUpdate} />}
+      {page==='venues'     && <VenuesPage data={data} setData={setData} pushUpdate={pushUpdate} />}
+      {page==='rations'    && <RationsPage />}
+      {page==='dispatch'   && <DispatchPage data={data} setData={setData} currentUser={currentUser} pushUpdate={pushUpdate} />}
+      {page==='profile' && viewPlayer && <ProfilePage playerId={viewPlayer} data={data} setData={setData} onBack={()=>setPage('roster')} currentUser={currentUser} pushUpdate={pushUpdate} />}
     </>
   );
 }
