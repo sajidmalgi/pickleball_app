@@ -891,25 +891,54 @@ function MatchRow({ match, players }) {
 function RosterPage({ data, setData, setViewPlayer, setPage, currentUser, pushUpdate, onRefresh }) {
   const { players } = data;
   const [showAdd, setShowAdd] = useState(false);
-  const [search, setSearch] = useState('');
-  const sorted = [...players].sort((a,b) => b.wins - a.wins);
+  const [search, setSearch]   = useState('');
 
-  const addPlayer = async (p) => {
+  const filtered = [...players]
+    .filter(p => !search.trim() ||
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      (p.handle||'').toLowerCase().includes(search.toLowerCase()) ||
+      (p.bio||'').toLowerCase().includes(search.toLowerCase()))
+    .sort((a,b) => b.wins - a.wins || winPct(b) - winPct(a));
+
+  const addPlayer = (p) => {
     const next = { ...data, players: [...data.players, p] };
-    setData(next);
-    await pushUpdate(next);
-    setShowAdd(false);
+    setData(next); pushUpdate(next); setShowAdd(false);
   };
 
   return (
     <div className="page">
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:18}}>
+      {/* Header row */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:12}}>
         <div><div className="kicker">Season {new Date().getFullYear()}</div><div className="hed">THE <span className="a">ROSTER</span></div></div>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add</button>
+        <div style={{display:'flex',gap:6,alignItems:'center'}}>
+          <button onClick={onRefresh} title="Refresh" style={{background:'none',border:'1px solid var(--border2)',borderRadius:4,color:'var(--text3)',cursor:'pointer',padding:'6px 9px',fontSize:14,lineHeight:1,transition:'all 0.15s'}}
+            onMouseEnter={e=>e.currentTarget.style.color='var(--neon)'} onMouseLeave={e=>e.currentTarget.style.color='var(--text3)'}>↺</button>
+          <button className="btn btn-primary btn-sm" onClick={()=>setShowAdd(true)}>+ Add</button>
+        </div>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,280px),1fr))",gap:10}}>
-        {sorted.map(p => <PlayerCard key={p.id} player={p} currentUser={currentUser} onClick={() => { setViewPlayer(p.id); setPage('profile'); }} />)}
+
+      {/* Search bar */}
+      <div style={{position:'relative',marginBottom:14}}>
+        <input
+          type="text"
+          value={search}
+          onChange={e=>setSearch(e.target.value)}
+          placeholder="Search by name, handle, or bio…"
+          style={{paddingLeft:34,background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:6,fontSize:13}}
+        />
+        <span style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',color:'var(--text3)',fontSize:15,pointerEvents:'none',lineHeight:1}}>⌕</span>
+        {search && (
+          <button onClick={()=>setSearch('')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:18,padding:0,lineHeight:1}}>×</button>
+        )}
       </div>
+
+      {/* Cards */}
+      {filtered.length === 0 && search
+        ? <div className="empty">No players match "{search}"</div>
+        : <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,280px),1fr))",gap:10}}>
+            {filtered.map(p => <PlayerCard key={p.id} player={p} currentUser={currentUser} onClick={() => { setViewPlayer(p.id); setPage('profile'); }} />)}
+          </div>
+      }
       {showAdd && <AddPlayerModal onClose={() => setShowAdd(false)} onAdd={addPlayer} players={players} />}
     </div>
   );
@@ -1101,7 +1130,8 @@ function ProfilePage({ playerId, data, setData, onBack, currentUser, pushUpdate,
   if (!player) return <div className="page"><button className="back-btn" onClick={onBack}>← Back</button></div>;
   const isMe = player.id === currentUser;
   const iAmAdmin = isAdmin(players, currentUser);
-  const canEdit = isMe || iAmAdmin;
+  // Profile editing (bio, handle, photo) = own profile only
+  // Admin powers live in the Admin panel, not here
   const [editing, setEditing] = useState(false);
   const [editBio, setEditBio]       = useState(player.bio);
   const [editHandle, setEditHandle] = useState(player.handle);
@@ -1150,7 +1180,7 @@ function ProfilePage({ playerId, data, setData, onBack, currentUser, pushUpdate,
             <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:900,fontSize:28,textTransform:'uppercase',color:'#f0f0f5',lineHeight:1}}>{player.name}</div>
             <span className="chip chip-neon">Rank #{rank}</span>
             {isMe && <span className="chip chip-dim">You</span>}
-            {ADMIN_NAMES.some(n=>player.name.toLowerCase().startsWith(n.toLowerCase())) && <span className="admin-badge">Admin</span>}
+            {ADMIN_NAMES.some(n=>player.name.toLowerCase().startsWith(n.toLowerCase())) && <span className="admin-badge" title="Admin — edit this profile via Admin panel">Admin</span>}
           </div>
           {editing
             ? <input type="text" value={editHandle} onChange={e=>setEditHandle(e.target.value)} style={{marginTop:8,fontSize:13}} />
@@ -1162,7 +1192,7 @@ function ProfilePage({ playerId, data, setData, onBack, currentUser, pushUpdate,
                 <div style={{marginTop:12}}><PhotoUpload player={player} onUpload={url=>setEditPfp(url)} /></div>
               </>
             : <div style={{fontSize:13,color:'#9898a8',marginTop:6,fontStyle:'italic'}}>{player.bio||'No bio yet.'}</div>}
-          {canEdit && (
+          {isMe && (
             <div style={{display:'flex',gap:6,marginTop:10,flexWrap:'wrap'}}>
               {editing
                 ? <><button className="btn btn-primary btn-sm" onClick={saveProfile}>Save</button><button className="btn btn-ghost btn-sm" onClick={()=>setEditing(false)}>Cancel</button></>
