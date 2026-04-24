@@ -348,7 +348,13 @@ const POST_GAME_MEALS = [
 const winPct    = p => p.wins + p.losses === 0 ? 0 : Math.round(p.wins / (p.wins + p.losses) * 100);
 const streak    = s => s > 0 ? `W${s}` : s < 0 ? `L${Math.abs(s)}` : '—';
 const today     = () => new Date().toISOString().split('T')[0];
-const fmtDate   = d => { const [y,m,day] = (d||'').split('-'); return day&&m&&y ? `${day}/${m}/${y}` : d||''; };
+const fmtDate = d => {
+  if (!d) return '';
+  const [y,mo,day] = d.split('-');
+  if (!day||!mo||!y) return d;
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${parseInt(day)} ${months[parseInt(mo)-1]} ${y}`;
+};
 const initials  = n => n.split(' ').map(p => p[0]).join('').toUpperCase().slice(0,2);
 const hashPin   = async pin => { const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin + 'rally_salt')); return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join(''); };
 
@@ -1063,7 +1069,9 @@ function ScoreboardPage({ data, sport, setSport, setPage, setViewPlayer, setData
           </div>
           {recent.length === 0
             ? <div className="empty">No {sport} matches yet</div>
-            : recent.map(m => <MatchRow key={m.id} match={m} players={players} />)}
+            : <div className="card" style={{padding:0,overflow:'hidden'}}>
+                {recent.map(m => <MatchRow key={m.id} match={m} players={players} />)}
+              </div>}
         </div>
 
         {/* RIGHT */}
@@ -1073,8 +1081,8 @@ function ScoreboardPage({ data, sport, setSport, setPage, setViewPlayer, setData
               <div className="champ-lbl">RANKED #1 · {lbSport==='all'?'ALL SPORTS':lbSport.toUpperCase()}</div>
               <div style={{display:'flex',gap:10,alignItems:'center'}}>
                 <Av player={top} size={44} />
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:900,fontSize:18,textTransform:'uppercase',color:'#f0f0f5',lineHeight:1}}>{top.name}</div>
+                <div style={{flex:1,minWidth:0,overflow:'hidden'}}>
+                  <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:900,fontSize:18,textTransform:'uppercase',color:'#f0f0f5',lineHeight:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{top.name}</div>
                   {top.bio && <div style={{fontSize:11,color:'#9898a8',marginTop:3,fontStyle:'italic',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{top.bio}</div>}
                 </div>
                 <div style={{textAlign:'right',flexShrink:0}}>
@@ -1128,7 +1136,7 @@ function MatchRow({ match, players }) {
   const sportAbbr = match.sport ? match.sport.slice(0,3).toUpperCase() : '—';
   return (
     <div style={{display:'flex',alignItems:'center',gap:8,padding:'7px 12px',borderBottom:'1px solid var(--border)',cursor:'default'}}>
-      <span style={{fontFamily:'DM Mono,monospace',fontSize:8,color:'#5a5a6e',width:62,flexShrink:0,letterSpacing:'0.04em'}}>{fmtDate(match.date)}</span>
+      <span style={{fontFamily:'DM Mono,monospace',fontSize:8,color:'#5a5a6e',minWidth:72,flexShrink:0,letterSpacing:'0.04em',whiteSpace:'nowrap'}}>{fmtDate(match.date)}</span>
       <span style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:9,fontWeight:700,letterSpacing:'0.1em',textTransform:'uppercase',background:'var(--bg3)',border:'1px solid var(--border)',padding:'1px 4px',color:'#5a5a6e',flexShrink:0,borderRadius:2}}>{sportAbbr}</span>
       <span style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:13,textTransform:'uppercase',color:w1?'#f0f0f5':'#5a5a6e',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',minWidth:0}}>{name(match.team1)}</span>
       <span style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:900,fontSize:15,color:w1?'#c8ff00':'#5a5a6e',flexShrink:0,minWidth:18,textAlign:'right'}}>{match.score1}</span>
@@ -1313,7 +1321,7 @@ function ResultsPage({ data, setData, sport, pushUpdate, onRefresh, currentUser 
                 const w1=m.score1>m.score2;
                 return (
                   <tr key={m.id}>
-                    <td className="mono">{fmtDate(m.date)}</td>
+                    <td className="mono" style={{whiteSpace:"nowrap",fontSize:11}}>{fmtDate(m.date)}</td>
                     <td><span className="sbadge">{SPORT_ICONS[m.sport]||m.sport.slice(0,3)}</span></td>
                     <td style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:w1?700:400,fontSize:13,textTransform:'uppercase',color:w1?'#f0f0f5':'#5a5a6e',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name(m.team1)}</td>
                     <td style={{textAlign:'center',whiteSpace:'nowrap'}}>
@@ -1534,7 +1542,7 @@ function ProfilePage({ playerId, data, setData, onBack, currentUser, pushUpdate,
                 const opp=inT1?m.team2:m.team1;
                 return (
                   <tr key={m.id}>
-                    <td className="mono">{fmtDate(m.date)}</td>
+                    <td className="mono" style={{whiteSpace:"nowrap",fontSize:11}}>{fmtDate(m.date)}</td>
                     <td><span className="sbadge">{SPORT_ICONS[m.sport]||m.sport.slice(0,3)}</span></td>
                     <td style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:13,textTransform:'uppercase',color:'#9898a8',maxWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name(opp)}</td>
                     <td style={{textAlign:'center',whiteSpace:'nowrap'}}>
@@ -1616,7 +1624,7 @@ function VenuesPage({ data, setData, pushUpdate, currentUser }) {
             <div className="vc-foot">
               <div style={{display:'flex',flexWrap:'wrap',gap:4}}>{(v.sports||[]).map(s=><span key={s} className="vc-tag">{s}</span>)}</div>
               <div style={{display:'flex',alignItems:'center',gap:5,flexShrink:0,flexWrap:'wrap',justifyContent:'flex-end'}}>
-                <span style={{fontFamily:'DM Mono,monospace',fontSize:10,color:'#ffb800',whiteSpace:'nowrap'}}>{'★'.repeat(v.rating||0)}{'☆'.repeat(5-(v.rating||0))}</span>
+                <span style={{fontFamily:'DM Mono,monospace',fontSize:10,color:'#ffb800',whiteSpace:'nowrap'}}>{'★'.repeat(Math.min(5,Math.max(0,v.rating||0)))}{'☆'.repeat(Math.min(5,Math.max(0,5-(v.rating||0))))}</span>
                 {amAdmin && <>
                   <button className="admin-edit" style={{padding:'2px 7px',fontSize:'9px'}} onClick={e=>{e.stopPropagation();startEdit(v);}}>Edit</button>
                   <button className="admin-del"  style={{padding:'2px 7px',fontSize:'9px'}} onClick={e=>{e.stopPropagation();deleteVenue(v.id);}}>×</button>
@@ -1708,11 +1716,13 @@ function RationsPage({ data, setData, pushUpdate, currentUser }) {
           <div key={m.id} id={'meal-'+m.id} className="fc" style={{transition:'box-shadow 0.3s', boxShadow: highlight===m.id?'0 0 0 2px #c8ff00':undefined}}>
             <div className="fc-top"><div className="fc-name">{m.name}</div><span style={{fontSize:20}}>{m.emoji}</span></div>
             <div className="fc-body">{m.desc}</div>
-            <div className="fc-macros">
-              <div className="fc-macro"><span className="fc-mval">{m.protein}g</span><span className="fc-mlbl">Protein</span></div>
-              <div className="fc-macro"><span className="fc-mval">{m.carbs}g</span><span className="fc-mlbl">Carbs</span></div>
-              <div className="fc-macro"><span className="fc-mval">{m.fat}g</span><span className="fc-mlbl">Fat</span></div>
-            </div>
+            {(m.protein||m.carbs||m.fat) ? (
+              <div className="fc-macros">
+                <div className="fc-macro"><span className="fc-mval">{m.protein}g</span><span className="fc-mlbl">Protein</span></div>
+                <div className="fc-macro"><span className="fc-mval">{m.carbs}g</span><span className="fc-mlbl">Carbs</span></div>
+                <div className="fc-macro"><span className="fc-mval">{m.fat}g</span><span className="fc-mlbl">Fat</span></div>
+              </div>
+            ) : null}
             {amAdmin && (
               <div style={{display:'flex',gap:6,padding:'5px 10px',borderTop:'1px solid var(--border)'}}>
                 <button className="admin-edit" style={{fontSize:'9px',padding:'2px 8px'}} onClick={()=>{setForm({name:m.name,desc:m.desc,protein:m.protein,carbs:m.carbs,fat:m.fat,emoji:m.emoji||'🍗'});setEditId(m.id);setShowAdd(true);}}>Edit</button>
@@ -2296,6 +2306,10 @@ function App() {
         setData(empty);
         saveToCache(empty);
       } else {
+        // Sanitize any bad venue ratings already in storage
+        if (d.venues) {
+          d.venues = d.venues.map(v => ({...v, rating: Math.min(5, Math.max(1, parseInt(v.rating)||3))}));
+        }
         setData(d);
         saveToCache(d);
       }
