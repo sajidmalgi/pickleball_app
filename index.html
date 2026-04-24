@@ -367,21 +367,33 @@ const isAdmin = (players, userId) => {
   return p && ADMIN_NAMES.some(n => p.name.toLowerCase().startsWith(n.toLowerCase()));
 };
 
-// ─── IMGUR PHOTO UPLOAD ───────────────────────────────────────────────────────
-// Imgur anonymous upload — free, no account needed for uploaders, images are public
-// Client ID from a free Imgur app registration (this is a shared demo ID — replace with your own at imgur.com/oauth2/addclient)
-const IMGUR_CLIENT_ID = 'f4fb5f0b5e26e53';
-async function uploadToImgur(file) {
-  const fd = new FormData();
-  fd.append('image', file);
-  const r = await fetch('https://api.imgur.com/3/image', {
-    method: 'POST',
-    headers: { Authorization: 'Client-ID ' + IMGUR_CLIENT_ID },
-    body: fd,
+// ─── PHOTO STORAGE ────────────────────────────────────────────────────────────
+// Photos are resized to max 300px and stored as base64 in JSONbin.
+// ~15-25KB per photo — well within JSONbin's limits for a small crew.
+// No third-party image host needed, no rate limits.
+async function processPhotoFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 300;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+          else       { w = Math.round(w * MAX / h); h = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
   });
-  if (!r.ok) throw new Error('Upload failed');
-  const j = await r.json();
-  return j.data.link;
 }
 
 // ─── DATA LAYER ───────────────────────────────────────────────────────────────
@@ -431,44 +443,20 @@ function PhotoUpload({ player, onUpload, currentPfp }) {
   const [err,       setErr]       = useState('');
   const [urlInput,  setUrlInput]  = useState('');
 
-  // Resize image to max 800px before upload — fixes large mobile photos
-  const resizeImage = (file) => new Promise((resolve) => {
-    const img = new Image();
-    const reader = new FileReader();
-    reader.onload = e => {
-      img.onload = () => {
-        const MAX = 800;
-        let w = img.width, h = img.height;
-        if (w > MAX || h > MAX) {
-          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-          else       { w = Math.round(w * MAX / h); h = MAX; }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.85);
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-
   const handleFile = async (file) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) { setErr('Images only (JPG, PNG, HEIC)'); return; }
-    setErr(''); setUploading(true); setProgress(15);
+    setErr(''); setUploading(true); setProgress(30);
     try {
-      const t1 = setTimeout(() => setProgress(45), 300);
-      const t2 = setTimeout(() => setProgress(75), 800);
-      const resized = await resizeImage(file);
-      const url = await uploadToImgur(resized);
-      clearTimeout(t1); clearTimeout(t2);
+      const t1 = setTimeout(() => setProgress(70), 200);
+      const dataUrl = await processPhotoFile(file);
+      clearTimeout(t1);
       setProgress(100);
-      setTimeout(() => { setUploading(false); setProgress(0); }, 300);
-      onUpload(url);
+      setTimeout(() => { setUploading(false); setProgress(0); }, 200);
+      onUpload(dataUrl);
     } catch(e) {
       setUploading(false); setProgress(0);
-      setErr('Upload failed — check your connection or paste a URL instead');
+      setErr('Could not process photo — try a different image or paste a URL below');
     }
   };
 
@@ -1624,7 +1612,7 @@ function VenuesPage({ data, setData, pushUpdate, currentUser }) {
             <div className="vc-foot">
               <div style={{display:'flex',flexWrap:'wrap',gap:4}}>{(v.sports||[]).map(s=><span key={s} className="vc-tag">{s}</span>)}</div>
               <div style={{display:'flex',alignItems:'center',gap:5,flexShrink:0,flexWrap:'wrap',justifyContent:'flex-end'}}>
-                <span style={{fontFamily:'DM Mono,monospace',fontSize:10,color:'#ffb800',whiteSpace:'nowrap'}}>{'★'.repeat(Math.min(5,Math.max(0,v.rating||0)))}{'☆'.repeat(Math.min(5,Math.max(0,5-(v.rating||0))))}</span>
+                <span style={{fontSize:13,color:'#ffb800',whiteSpace:'nowrap',letterSpacing:1}}>{'★'.repeat(Math.min(5,Math.max(0,v.rating||0)))}{'☆'.repeat(Math.min(5,Math.max(0,5-(v.rating||0))))}</span>
                 {amAdmin && <>
                   <button className="admin-edit" style={{padding:'2px 7px',fontSize:'9px'}} onClick={e=>{e.stopPropagation();startEdit(v);}}>Edit</button>
                   <button className="admin-del"  style={{padding:'2px 7px',fontSize:'9px'}} onClick={e=>{e.stopPropagation();deleteVenue(v.id);}}>×</button>
@@ -1653,7 +1641,10 @@ function VenuesPage({ data, setData, pushUpdate, currentUser }) {
               <div style={{display:'flex',gap:6,marginTop:4}}>
                 {[1,2,3,4,5].map(n=>(
                   <button key={n} type="button" onClick={()=>setForm({...form,rating:n})}
-                    style={{fontSize:20,background:'none',border:'none',cursor:'pointer',padding:'2px',lineHeight:1,opacity:form.rating>=n?1:0.25,transition:'opacity 0.15s'}}>★</button>
+                    style={{fontSize:24,background:'none',border:'none',cursor:'pointer',padding:'4px 2px',lineHeight:1,
+                      color: form.rating>=n ? '#ffb800' : 'rgba(255,255,255,0.15)',
+                      textShadow: form.rating>=n ? '0 0 8px rgba(255,184,0,0.5)' : 'none',
+                      transition:'all 0.15s',WebkitTapHighlightColor:'transparent'}}>★</button>
                 ))}
               </div>
             </div>
