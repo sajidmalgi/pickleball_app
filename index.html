@@ -888,7 +888,7 @@ function MatchRow({ match, players }) {
 }
 
 // ─── ROSTER ───────────────────────────────────────────────────────────────────
-function RosterPage({ data, setData, setViewPlayer, setPage, currentUser, pushUpdate }) {
+function RosterPage({ data, setData, setViewPlayer, setPage, currentUser, pushUpdate, onRefresh }) {
   const { players } = data;
   const [showAdd, setShowAdd] = useState(false);
   const [search, setSearch] = useState('');
@@ -969,7 +969,7 @@ function AddPlayerModal({ onClose, onAdd, players }) {
 }
 
 // ─── RESULTS ──────────────────────────────────────────────────────────────────
-function ResultsPage({ data, setData, sport, pushUpdate }) {
+function ResultsPage({ data, setData, sport, pushUpdate, onRefresh }) {
   const { players, matches } = data;
   const [showAdd, setShowAdd] = useState(false);
   const [filter, setFilter]   = useState('all');
@@ -995,7 +995,11 @@ function ResultsPage({ data, setData, sport, pushUpdate }) {
     <div className="page">
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:16}}>
         <div><div className="kicker">All time</div><div className="hed" style={{fontSize:'clamp(22px,5vw,40px)'}}>MATCH <span className="a">RESULTS</span></div></div>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Log</button>
+        <div style={{display:'flex',gap:6,alignItems:'center'}}>
+          <button onClick={onRefresh} title="Refresh" style={{background:'none',border:'1px solid var(--border2)',borderRadius:4,color:'var(--text3)',cursor:'pointer',padding:'6px 9px',fontSize:14,lineHeight:1,transition:'all 0.15s'}}
+            onMouseEnter={e=>e.currentTarget.style.color='var(--neon)'} onMouseLeave={e=>e.currentTarget.style.color='var(--text3)'}>↺</button>
+          <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>+ Log</button>
+        </div>
       </div>
 
       <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}} className="sport-row">
@@ -1254,7 +1258,7 @@ function VenuesPage({ data, setData, pushUpdate, currentUser }) {
         <button className="btn btn-primary btn-sm" onClick={openAdd}>+ Add</button>
       </div>
       {venues.length === 0 && <div className="empty">No spots yet — add your first venue!</div>}
-      <div className="grid-3">
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,320px),1fr))",gap:10}}>
         {venues.map(v=>(
           <div key={v.id} className="vc">
             <div className="vc-top">
@@ -1274,11 +1278,11 @@ function VenuesPage({ data, setData, pushUpdate, currentUser }) {
             <div className="vc-body">{v.notes}</div>
             <div className="vc-foot">
               <div style={{display:'flex',flexWrap:'wrap',gap:4}}>{(v.sports||[]).map(s=><span key={s} className="vc-tag">{s}</span>)}</div>
-              <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
-                <span style={{fontFamily:'DM Mono,monospace',fontSize:10,color:'#ffb800'}}>{'★'.repeat(v.rating||0)}{'☆'.repeat(5-(v.rating||0))}</span>
+              <div style={{display:'flex',alignItems:'center',gap:5,flexShrink:0,flexWrap:'wrap',justifyContent:'flex-end'}}>
+                <span style={{fontFamily:'DM Mono,monospace',fontSize:10,color:'#ffb800',whiteSpace:'nowrap'}}>{'★'.repeat(v.rating||0)}{'☆'.repeat(5-(v.rating||0))}</span>
                 {amAdmin && <>
-                  <button className="admin-edit" style={{padding:'2px 7px',fontSize:'9px'}} onClick={()=>startEdit(v)}>Edit</button>
-                  <button className="admin-del"  style={{padding:'2px 7px',fontSize:'9px'}} onClick={()=>deleteVenue(v.id)}>×</button>
+                  <button className="admin-edit" style={{padding:'2px 7px',fontSize:'9px'}} onClick={e=>{e.stopPropagation();startEdit(v);}}>Edit</button>
+                  <button className="admin-del"  style={{padding:'2px 7px',fontSize:'9px'}} onClick={e=>{e.stopPropagation();deleteVenue(v.id);}}>×</button>
                 </>}
               </div>
             </div>
@@ -1387,51 +1391,52 @@ function RationsPage({ data, setData, pushUpdate, currentUser }) {
 
 
 // ─── DISPATCH ─────────────────────────────────────────────────────────────────
-function DispatchPage({ data, setData, currentUser, pushUpdate }) {
+function DispatchPage({ data, setData, currentUser, pushUpdate, onRefresh }) {
   const { players, banter } = data;
-  const [text, setText] = useState('');
-  const [rxns, setRxns] = useState(() => banter.reduce((a,b)=>({...a,[b.id]:b.reactions}),{}));
+  const [text, setText]   = useState('');
+  const [rxns, setRxns]   = useState(() => banter.reduce((a,b)=>({...a,[b.id]:b.reactions}),{}));
+  const [showCompose, setShowCompose] = useState(false);
+  const listRef = useRef(null);
   useEffect(() => { setRxns(banter.reduce((a,b)=>({...a,[b.id]:b.reactions}),{})); }, [banter]);
 
-  const post = async () => {
+  const ALL_REACTIONS = [['fire','🔥'],['skull','💀'],['trophy','🏆'],['laugh','😂'],['clap','👏'],['eyes','👀']];
+
+  const post = () => {
     if (!text.trim()||!currentUser) return;
-    const nb={id:Date.now(),playerId:currentUser,text:text.trim(),time:'just now',reactions:{fire:0,skull:0,trophy:0}};
+    const nb={id:Date.now(),playerId:currentUser,text:text.trim(),time:'just now',reactions:{fire:0,skull:0,trophy:0,laugh:0,clap:0,eyes:0}};
     const next={...data,banter:[nb,...banter]};
     setData(next);
-    await pushUpdate(next, {type:'banter',icon:'💬',title:'Posted!',msg:text.trim().slice(0,50)+(text.length>50?'…':'')});
-    setText('');
+    pushUpdate(next, {type:'banter',icon:'💬',title:'Posted!',msg:text.trim().slice(0,50)+(text.length>50?'…':'')});
+    setText(''); setShowCompose(false);
   };
 
-  const react = async (bid, emoji) => {
-    const nextRxns={...rxns,[bid]:{...rxns[bid],[emoji]:(rxns[bid]?.[emoji]||0)+1}};
+  const react = (bid, emoji) => {
+    const cur = rxns[bid] || {};
+    const nextRxns={...rxns,[bid]:{...cur,[emoji]:(cur[emoji]||0)+1}};
     setRxns(nextRxns);
     const nextBanter=banter.map(b=>b.id===bid?{...b,reactions:nextRxns[bid]}:b);
     const next={...data,banter:nextBanter};
-    setData(next); await pushUpdate(next);
+    setData(next); pushUpdate(next);
   };
 
   const me = players.find(p=>p.id===currentUser);
 
   return (
-    <div className="page" style={{maxWidth:700}}>
-      <div style={{marginBottom:18}}><div className="kicker">Crew chat</div><div className="hed">THE <span className="a">DISPATCH</span></div></div>
-      <div className="add-form" style={{marginBottom:16}}>
-        <div className="add-form-title">Drop a Take</div>
-        {me && (
-          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
-            <Av player={me} size={28} />
-            <span style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:14,textTransform:'uppercase',color:'#f0f0f5'}}>{me.name}</span>
-          </div>
-        )}
-        <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Say something. Threaten someone. Celebrate yourself." rows={2} style={{resize:'none',marginBottom:10}} />
-        <button className="btn btn-primary btn-sm" onClick={post} disabled={!text.trim()}>Post →</button>
+    <div className="page" style={{maxWidth:700, paddingBottom: 130}}>
+      {/* Header */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:16}}>
+        <div><div className="kicker">Crew chat</div><div className="hed">THE <span className="a">DISPATCH</span></div></div>
+        <button onClick={onRefresh} title="Refresh" style={{background:'none',border:'1px solid var(--border2)',borderRadius:4,color:'var(--text3)',cursor:'pointer',padding:'6px 9px',fontSize:14,lineHeight:1,transition:'all 0.15s'}}
+          onMouseEnter={e=>e.currentTarget.style.color='var(--neon)'} onMouseLeave={e=>e.currentTarget.style.color='var(--text3)'}>↺</button>
       </div>
-      <div className="card" style={{padding:'2px 14px'}}>
+
+      {/* Posts feed */}
+      <div ref={listRef} className="card" style={{padding:'2px 14px'}}>
         {banter.length===0 && <div className="empty">Nothing yet — be first to talk.</div>}
         {banter.map(b=>{
           const p=players.find(x=>x.id===b.playerId);
           if (!p) return null;
-          const r=rxns[b.id]||b.reactions;
+          const r={...{fire:0,skull:0,trophy:0,laugh:0,clap:0,eyes:0},...(rxns[b.id]||b.reactions)};
           return (
             <div key={b.id} className="bp">
               <div className="bp-meta">
@@ -1440,18 +1445,58 @@ function DispatchPage({ data, setData, currentUser, pushUpdate }) {
                 <span className="bp-time">{b.time}</span>
               </div>
               <div className="bp-text">{b.text}</div>
-              <div className="bp-rxns">
-                {[['fire','🔥'],['skull','💀'],['trophy','🏆']].map(([k,e])=>(
-                  <button key={k} className="bp-btn" onClick={()=>react(b.id,k)}>{e} {r[k]||0}</button>
+              <div className="bp-rxns" style={{flexWrap:'wrap',gap:5}}>
+                {ALL_REACTIONS.map(([k,e])=>(
+                  <button key={k} className="bp-btn" style={{opacity:r[k]?1:0.45,transition:'all 0.15s'}} onClick={()=>react(b.id,k)}>
+                    {e} {r[k]||0}
+                  </button>
                 ))}
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* Fixed compose bar at bottom — above bottom nav */}
+      <div style={{
+        position:'fixed',bottom:'calc(56px + env(safe-area-inset-bottom, 0px))',left:0,right:0,
+        background:'var(--bg2)',borderTop:'1px solid var(--border2)',zIndex:90,
+        padding:'10px 14px',boxShadow:'0 -4px 24px rgba(0,0,0,0.4)'
+      }}>
+        {showCompose ? (
+          <div>
+            {me && (
+              <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:8}}>
+                <Av player={me} size={24} />
+                <span style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:13,textTransform:'uppercase',color:'var(--text)'}}>{me.name}</span>
+              </div>
+            )}
+            <textarea autoFocus value={text} onChange={e=>setText(e.target.value)}
+              placeholder="Say something. Threaten someone. Celebrate yourself."
+              rows={2} style={{resize:'none',marginBottom:8,fontSize:13}}
+              onKeyDown={e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))post();}} />
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+              <button className="btn btn-ghost btn-sm" onClick={()=>{setShowCompose(false);setText('');}}>Cancel</button>
+              <button className="btn btn-primary btn-sm" onClick={post} disabled={!text.trim()}>Post →</button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={()=>setShowCompose(true)} style={{
+            width:'100%',background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:6,
+            padding:'11px 14px',cursor:'pointer',textAlign:'left',
+            fontFamily:'Barlow,sans-serif',fontSize:13,color:'var(--text3)',
+            display:'flex',alignItems:'center',gap:10,transition:'border-color 0.15s'
+          }} onMouseEnter={e=>e.currentTarget.style.borderColor='var(--neon)'} onMouseLeave={e=>e.currentTarget.style.borderColor='rgba(255,255,255,0.13)'}>
+            {me && <Av player={me} size={24} />}
+            <span>Drop a take…</span>
+            <span style={{marginLeft:'auto',fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:11,letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--neon)'}}>Post →</span>
+          </button>
+        )}
+      </div>
     </div>
   );
 }
+
 
 
 // ─── ADMIN PAGE ───────────────────────────────────────────────────────────────
@@ -1750,11 +1795,11 @@ function App() {
     <ToastProvider>
       <Header page={page} setPage={setPage} players={data.players} currentUser={currentUser} onLogout={handleLogout} syncStatus={syncStatus} lastSync={lastSync} isAdmin={amAdmin} />
       {page==='scoreboard' && <ScoreboardPage data={data} sport={sport} setSport={setSport} setPage={setPage} setViewPlayer={setViewPlayer} setData={setData} currentUser={currentUser} onRefresh={load} />}
-      {page==='roster'     && <RosterPage data={data} setData={setData} setViewPlayer={setViewPlayer} setPage={setPage} currentUser={currentUser} pushUpdate={pushUpdate} />}
-      {page==='results'    && <ResultsPage data={data} setData={setData} sport={sport} pushUpdate={pushUpdate} />}
+      {page==='roster'     && <RosterPage data={data} setData={setData} setViewPlayer={setViewPlayer} setPage={setPage} currentUser={currentUser} pushUpdate={pushUpdate} onRefresh={load} />}
+      {page==='results'    && <ResultsPage data={data} setData={setData} sport={sport} pushUpdate={pushUpdate} onRefresh={load} />}
       {page==='venues'     && <VenuesPage data={data} setData={setData} pushUpdate={pushUpdate} currentUser={currentUser} />}
       {page==='rations'    && <RationsPage data={data} setData={setData} pushUpdate={pushUpdate} currentUser={currentUser} />}
-      {page==='dispatch'   && <DispatchPage data={data} setData={setData} currentUser={currentUser} pushUpdate={pushUpdate} />}
+      {page==='dispatch'   && <DispatchPage data={data} setData={setData} currentUser={currentUser} pushUpdate={pushUpdate} onRefresh={load} />}
       {page==='profile' && viewPlayer && <ProfilePage playerId={viewPlayer} data={data} setData={setData} onBack={()=>setPage('roster')} currentUser={currentUser} pushUpdate={pushUpdate} />}
       {page==='admin'   && amAdmin    && <AdminPage data={data} setData={setData} pushUpdate={pushUpdate} currentUser={currentUser} onBack={()=>setPage('scoreboard')} />}
       <BottomNav page={page} setPage={setPage} isAdmin={amAdmin} />
