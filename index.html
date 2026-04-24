@@ -941,7 +941,7 @@ function SpiceOverlay({ players, matches }) {
 }
 
 // ─── SCOREBOARD ───────────────────────────────────────────────────────────────
-function ScoreboardPage({ data, sport, setSport, setPage, setViewPlayer, setData, currentUser, onRefresh }) {
+function ScoreboardPage({ data, sport, setSport, setPage, setViewPlayer, setData, currentUser, onRefresh, pushUpdate }) {
   const { players, matches, banter } = data;
   const [lbSport, setLbSport] = useState('all');
 
@@ -2383,7 +2383,7 @@ function App() {
   return (
     <ToastProvider>
       <Header page={page} setPage={setPage} players={data.players} currentUser={currentUser} onLogout={handleLogout} syncStatus={syncStatus} lastSync={lastSync} isAdmin={amAdmin} />
-      {page==='scoreboard' && <ScoreboardPage data={data} sport={sport} setSport={setSport} setPage={setPage} setViewPlayer={setViewPlayer} setData={setData} currentUser={currentUser} onRefresh={load} />}
+      {page==='scoreboard' && <ScoreboardPage data={data} sport={sport} setSport={setSport} setPage={setPage} setViewPlayer={setViewPlayer} setData={setData} currentUser={currentUser} onRefresh={load} pushUpdate={pushUpdate} />}
       {page==='roster'     && <RosterPage data={data} setData={setData} setViewPlayer={setViewPlayer} setPage={setPage} currentUser={currentUser} pushUpdate={pushUpdate} onRefresh={load} />}
       {page==='results'    && <ResultsPage data={data} setData={setData} sport={sport} pushUpdate={pushUpdate} onRefresh={load} currentUser={currentUser} />}
       {page==='venues'     && <VenuesPage data={data} setData={setData} pushUpdate={pushUpdate} currentUser={currentUser} />}
