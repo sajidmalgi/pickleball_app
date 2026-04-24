@@ -87,6 +87,7 @@
 
     .sb-layout { display: grid; grid-template-columns: 1fr 260px; gap: 14px; align-items: start; }
     @media(max-width:720px) { .sb-layout { grid-template-columns: 1fr; } }
+    .sb-layout > * { min-width: 0; overflow: hidden; }
 
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
@@ -327,7 +328,7 @@ const ADMIN_NAMES = ['Saj', 'Abby'];
 // Change this to something only you and Abby know
 const ADMIN_PIN = '0000';
 
-const SPORTS = ['Badminton','Pickleball','Volleyball','Basketball','Tennis','Table Tennis'];
+const SPORTS = ['Badminton','Pickleball','Tennis','Table Tennis'];
 const SPORT_ICONS = { 'Badminton':'BAD','Pickleball':'PCK','Volleyball':'VBL','Basketball':'BSK','Tennis':'TEN','Table Tennis':'TT' };
 
 // Single avatar color — consistent brand look until user sets a photo
@@ -352,8 +353,7 @@ const fmtDate = d => {
   if (!d) return '';
   const [y,mo,day] = d.split('-');
   if (!day||!mo||!y) return d;
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${parseInt(day)} ${months[parseInt(mo)-1]} ${y}`;
+  return `${day}/${mo}/${y}`;
 };
 const initials  = n => n.split(' ').map(p => p[0]).join('').toUpperCase().slice(0,2);
 const hashPin   = async pin => { const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin + 'rally_salt')); return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join(''); };
@@ -1002,16 +1002,16 @@ function ScoreboardPage({ data, sport, setSport, setPage, setViewPlayer, setData
               </button>
             ))}
           </div>
-          <div className="card" style={{marginBottom:14}}>
-            <table className="lb">
+          <div className="card" style={{marginBottom:14,overflow:"hidden"}}>
+            <table className="lb" style={{tableLayout:"fixed",width:"100%"}}>
               <thead>
                 <tr>
-                  <th style={{width:36}}>#</th>
-                  <th>Athlete</th>
-                  <th>W</th>
-                  <th className="lb-hide">L</th>
-                  <th>Pct</th>
-                  <th>Str</th>
+                  <th style={{width:28}}>#</th>
+                  <th style={{width:'auto'}}>Athlete</th>
+                  <th style={{width:28}}>W</th>
+                  <th className="lb-hide" style={{width:28}}>L</th>
+                  <th style={{width:38}}>Pct</th>
+                  <th style={{width:34}}>Str</th>
                 </tr>
               </thead>
               <tbody>
@@ -1022,8 +1022,8 @@ function ScoreboardPage({ data, sport, setSport, setPage, setViewPlayer, setData
                       <div className="lb-cell">
                         <Av player={p} size={28} onClick={() => { setViewPlayer(p.id); setPage('profile'); }} />
                         <div>
-                          <div className="lb-name" onClick={() => { setViewPlayer(p.id); setPage('profile'); }}>{p.name}</div>
-                          <div className="mono" style={{fontSize:9}}>{p.handle}</div>
+                          <div className="lb-name" onClick={() => { setViewPlayer(p.id); setPage('profile'); }} style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:90}}>{p.name}</div>
+                          <div className="mono" style={{fontSize:9,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:90}}>{p.handle}</div>
                         </div>
                         {i===0 && <span className="badge badge-neon" style={{marginLeft:4,flexShrink:0}}>CHAMP</span>}
                         {p.id === currentUser && <span className="badge badge-dim" style={{marginLeft:4,flexShrink:0}}>YOU</span>}
@@ -1136,7 +1136,7 @@ function MatchRow({ match, players }) {
   const sportAbbr = match.sport ? match.sport.slice(0,3).toUpperCase() : '—';
   return (
     <div style={{display:'flex',alignItems:'center',gap:8,padding:'7px 12px',borderBottom:'1px solid var(--border)',cursor:'default'}}>
-      <span style={{fontFamily:'DM Mono,monospace',fontSize:8,color:'#5a5a6e',minWidth:72,flexShrink:0,letterSpacing:'0.04em',whiteSpace:'nowrap'}}>{fmtDate(match.date)}</span>
+      <span style={{fontFamily:'DM Mono,monospace',fontSize:8,color:'#5a5a6e',width:72,flexShrink:0,letterSpacing:'0.03em',whiteSpace:'nowrap',overflow:'hidden'}}>{fmtDate(match.date)}</span>
       <span style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:9,fontWeight:700,letterSpacing:'0.1em',textTransform:'uppercase',background:'var(--bg3)',border:'1px solid var(--border)',padding:'1px 4px',color:'#5a5a6e',flexShrink:0,borderRadius:2}}>{sportAbbr}</span>
       <span style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:13,textTransform:'uppercase',color:w1?'#f0f0f5':'#5a5a6e',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',minWidth:0}}>{name(match.team1)}</span>
       <span style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:900,fontSize:15,color:w1?'#c8ff00':'#5a5a6e',flexShrink:0,minWidth:18,textAlign:'right'}}>{match.score1}</span>
@@ -1321,7 +1321,7 @@ function ResultsPage({ data, setData, sport, pushUpdate, onRefresh, currentUser 
                 const w1=m.score1>m.score2;
                 return (
                   <tr key={m.id}>
-                    <td className="mono" style={{whiteSpace:"nowrap",fontSize:11}}>{fmtDate(m.date)}</td>
+                    <td style={{fontFamily:"DM Mono,monospace",fontSize:10,color:"#5a5a6e",whiteSpace:"nowrap",paddingRight:4}}>{fmtDate(m.date)}</td>
                     <td><span className="sbadge">{SPORT_ICONS[m.sport]||m.sport.slice(0,3)}</span></td>
                     <td style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:w1?700:400,fontSize:13,textTransform:'uppercase',color:w1?'#f0f0f5':'#5a5a6e',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name(m.team1)}</td>
                     <td style={{textAlign:'center',whiteSpace:'nowrap'}}>
@@ -1542,7 +1542,7 @@ function ProfilePage({ playerId, data, setData, onBack, currentUser, pushUpdate,
                 const opp=inT1?m.team2:m.team1;
                 return (
                   <tr key={m.id}>
-                    <td className="mono" style={{whiteSpace:"nowrap",fontSize:11}}>{fmtDate(m.date)}</td>
+                    <td style={{fontFamily:"DM Mono,monospace",fontSize:10,color:"#5a5a6e",whiteSpace:"nowrap",paddingRight:4}}>{fmtDate(m.date)}</td>
                     <td><span className="sbadge">{SPORT_ICONS[m.sport]||m.sport.slice(0,3)}</span></td>
                     <td style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:13,textTransform:'uppercase',color:'#9898a8',maxWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name(opp)}</td>
                     <td style={{textAlign:'center',whiteSpace:'nowrap'}}>
