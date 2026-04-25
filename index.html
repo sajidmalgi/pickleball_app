@@ -1574,7 +1574,6 @@ function ProfilePage({ playerId, data, setData, onBack, currentUser, pushUpdate,
   const [editHandle, setEditHandle] = useState(player.handle);
   const [editSport, setEditSport]   = useState(player.favSport);
   const [editPfp, setEditPfp]       = useState(player.pfp||'');
-  const [showCoh, setShowCoh]       = useState(false);
   const [changePIN, setChangePIN]   = useState(false);
   const [pin,  setPin]  = useState(['','','','']);
   const [pin2, setPin2] = useState(['','','','']);
@@ -1611,13 +1610,6 @@ function ProfilePage({ playerId, data, setData, onBack, currentUser, pushUpdate,
     setData(next); await pushUpdate(next); setChangePIN(false); setPin(['','','','']); setPin2(['','','','']);
   };
 
-  const signCohFn = () => {
-    const next = {...data, players: players.map(p => p.id===player.id ? {...p, signed:true} : p)};
-    setData(next);
-    pushUpdate(next, {type:'match', icon:'ok', title:'Code signed!'});
-    setShowCoh(false);
-  };
-
   return (
     <div className="page" style={{maxWidth:800}}>
       <button className="back-btn" onClick={onBack}>← Back to Roster</button>
@@ -1642,7 +1634,12 @@ function ProfilePage({ playerId, data, setData, onBack, currentUser, pushUpdate,
             : <div style={{fontSize:13,color:'#9898a8',marginTop:6,fontStyle:'italic'}}>{player.bio||'No bio yet.'}</div>}
           {isMe && !player.signed && (
               <div style={{marginTop:10,marginBottom:4}}>
-                <button onClick={()=>setShowCoh(true)} style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:11,fontWeight:700,letterSpacing:'0.1em',textTransform:'uppercase',padding:'5px 12px',borderRadius:4,cursor:'pointer',border:'1px solid rgba(200,255,0,0.3)',background:'rgba(200,255,0,0.06)',color:'#c8ff00',transition:'all 0.15s'}}>
+                <button onClick={()=>{
+                  if(window.confirm('Sign the Code of Honour?\n\nYou agree to log every match fairly, accept banter gracefully, and eat post-game.')){
+                    const next={...data,players:players.map(p=>p.id===player.id?{...p,signed:true}:p)};
+                    setData(next);pushUpdate(next,{type:'match',icon:'ok',title:'Code signed!'});
+                  }
+                }} style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:11,fontWeight:700,letterSpacing:'0.1em',textTransform:'uppercase',padding:'5px 12px',borderRadius:4,cursor:'pointer',border:'1px solid rgba(200,255,0,0.3)',background:'rgba(200,255,0,0.06)',color:'#c8ff00',transition:'all 0.15s'}}>
                   ✦ Sign the Code of Honour
                 </button>
               </div>
@@ -1962,7 +1959,6 @@ function RationsPage({ data, setData, pushUpdate, currentUser }) {
       )}
     </div>
 
-    {showCoh && <CodeOfHonourModal player={player} onSign={signCohFn} onSkip={()=>setShowCoh(false)} />}
   );
 }
 
