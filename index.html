@@ -510,7 +510,7 @@ function ToastProvider({ children }) {
       <div className="toast-stack">
         {toasts.map(t => (
           <div key={t.id} className={`toast ${t.type||''}`}>
-            <span className="toast-icon">{t.icon||'⚡'}</span>
+            <span className="toast-icon">{t.icon==='ok'?'✓':t.icon||'⚡'}</span>
             <div className="toast-body">
               <div className="toast-title">{t.title}</div>
               {t.msg && <div className="toast-msg">{t.msg}</div>}
@@ -1598,7 +1598,7 @@ function ProfilePage({ playerId, data, setData, onBack, currentUser, pushUpdate,
     const pfp = editPfp || player.pfp || null;
     const next = {...data, players: players.map(p=>p.id===player.id?{...p,bio:editBio,handle:editHandle,favSport:editSport,pfp:pfp}:p)};
     setData(next); // update UI immediately
-    pushUpdate(next, {type:'match',icon:'✅',title:'Profile saved!'});
+    pushUpdate(next, {type:'match',icon:'ok',title:'Profile saved!'});
     setEditing(false);
   };
 
@@ -1957,7 +1957,7 @@ function RationsPage({ data, setData, pushUpdate, currentUser }) {
 
     {showCoh && <CodeOfHonourModal player={player} onSign={()=>{
       const next={...data,players:players.map(p=>p.id===player.id?{...p,signed:true}:p)};
-      setData(next); pushUpdate(next,{type:'match',icon:'✅',title:"Code signed!"});
+      setData(next); pushUpdate(next,{type:'match',icon:'ok',title:"Code signed!"});
       setShowCoh(false);
     }} onSkip={()=>setShowCoh(false)} />}
   );
@@ -2566,7 +2566,7 @@ function App() {
     const next = {...data, players: data.players.map(p=>p.id===currentUser?{...p,signed:true}:p)};
     setData(next); pushUpdate(next);
     setShowCoH(false);
-    toast({type:'match',icon:'✅',title:"Code signed! You're official."});
+    toast({type:'match',icon:'ok',title:"Code signed! You're official."});
   };
 
   if (!isConfigured()) return <SetupScreen />;
