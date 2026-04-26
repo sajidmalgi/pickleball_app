@@ -328,7 +328,7 @@ const ADMIN_NAMES = ['Saj', 'Abby'];
 // Change this to something only you and Abby know
 const ADMIN_PIN = '0000';
 
-const SPORTS = ['Badminton','Pickleball','Tennis','Table Tennis'];
+const SPORTS = ['Pickleball','Badminton','Tennis','Table Tennis'];
 const SPORT_ICONS = { 'Badminton':'BAD','Pickleball':'PCK','Volleyball':'VBL','Basketball':'BSK','Tennis':'TEN','Table Tennis':'TT' };
 
 // Single avatar color — consistent brand look until user sets a photo
@@ -692,6 +692,7 @@ function LoginScreen({ players, onLogin, onRegister, onAddAndLogin }) {
             </div>
             {err && <div style={{fontFamily:'DM Mono,monospace',fontSize:11,color:'#ff4d6a',marginBottom:8}}>{err}</div>}
             <button className="btn btn-primary btn-full" onClick={submitNewPlayer} disabled={loading}>{loading?'Joining…':'Join →'}</button>
+          {loading && <div style={{fontFamily:'DM Mono,monospace',fontSize:10,color:'#5a5a6e',textAlign:'center',marginTop:8,letterSpacing:'0.06em'}}>Adding you to the roster — may take 10–20 seconds on first join…</div>}
             <button onClick={()=>{setStep('pick');setErr('');}} style={{display:'block',margin:'10px auto 0',fontFamily:'DM Mono,monospace',fontSize:10,color:'#5a5a6e',background:'none',border:'none',cursor:'pointer',letterSpacing:'0.06em'}}>← Back</button>
           </>
         )}
@@ -1053,11 +1054,11 @@ function ScoreboardPage({ data, sport, setSport, setPage, setViewPlayer, setData
               <thead>
                 <tr>
                   <th style={{width:28}}>#</th>
-                  <th style={{width:'auto'}}>Athlete</th>
-                  <th style={{width:28}}>W</th>
-                  <th className="lb-hide" style={{width:28}}>L</th>
-                  <th style={{width:38}}>Pct</th>
-                  <th style={{width:34}}>Str</th>
+                  <th style={{width:'auto',textAlign:'left',paddingLeft:8}}>Athlete</th>
+                  <th style={{width:28,textAlign:'right'}}>W</th>
+                  <th className="lb-hide" style={{width:28,textAlign:'right'}}>L</th>
+                  <th style={{width:38,textAlign:'right'}}>Pct</th>
+                  <th style={{width:34,textAlign:'right'}}>Str</th>
                 </tr>
               </thead>
               <tbody>
@@ -1402,7 +1403,7 @@ function AddPlayerModal({ onClose, onAdd, players }) {
 function ResultsPage({ data, setData, sport, pushUpdate, onRefresh, currentUser }) {
   const { players, matches } = data;
   const [showAdd, setShowAdd]         = useState(false);
-  const [filter, setFilter]           = useState('all');
+  const [filter, setFilter]           = useState('Pickleball');
   const [selectedMatch, setSelectedMatch] = useState(null);
   const filtered = [...matches].filter(m => filter==='all'||m.sport===filter).sort((a,b)=>b.date.localeCompare(a.date));
   const name = ids => ids.map(id=>{const p=players.find(x=>x.id===id);return p?p.name.split(' ')[0]:'?';}).join(' & ');
@@ -1455,7 +1456,7 @@ function ResultsPage({ data, setData, sport, pushUpdate, onRefresh, currentUser 
                     onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
                     onMouseLeave={e=>e.currentTarget.style.background=''}>
                     <td style={{fontFamily:"DM Mono,monospace",fontSize:10,color:"#5a5a6e",whiteSpace:"nowrap",paddingRight:4}}>{fmtDate(m.date)}</td>
-                    <td><span className="sbadge">{SPORT_ICONS[m.sport]||m.sport.slice(0,3)}</span></td>
+                    <td style={{whiteSpace:'nowrap'}}><span className="sbadge">{SPORT_ICONS[m.sport]||m.sport.slice(0,3)}</span>{(m.team1.length>=2||m.team2.length>=2)&&<span style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:8,fontWeight:700,marginLeft:2,color:'rgba(200,255,0,0.5)',letterSpacing:'0.08em',textTransform:'uppercase'}}>2v2</span>}</td>
                     <td style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:w1?700:400,fontSize:13,textTransform:'uppercase',color:w1?'#f0f0f5':'#5a5a6e',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name(m.team1)}</td>
                     <td style={{textAlign:'center',whiteSpace:'nowrap'}}>
                       <span style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:900,fontSize:18,color:w1?'#c8ff00':'#5a5a6e'}}>{m.score1}</span>
@@ -1479,11 +1480,30 @@ function ResultsPage({ data, setData, sport, pushUpdate, onRefresh, currentUser 
 function LogMatchModal({ players, onClose, onLog, currentUser }) {
   const [form, setForm] = useState({sport:SPORTS[0],date:today(),team1:currentUser?[currentUser]:[],team2:[],score1:0,score2:0,note:''});
   const adj = (field, delta) => setForm(f=>({...f,[field]:Math.max(0,parseInt(f[field]||0)+delta)}));
+  // Cap per team — 2 for Pickleball doubles, 3 for volleyball, 1 for singles sports
+  const teamCap = ['Tennis','Table Tennis','Badminton'].includes(form.sport) ? 1 : 2;
+
   const toggle = (team, pid) => {
     const other = team===1?'team2':'team1';
-    if (form[other].includes(pid)) return;
+    if (form[other].includes(pid)) return; // can't be on both
     const k = team===1?'team1':'team2';
-    setForm(f=>({...f,[k]:f[k].includes(pid)?f[k].filter(x=>x!==pid):[...f[k],pid]}));
+    setForm(f=>{
+      const cur = f[k];
+      if (cur.includes(pid)) return {...f,[k]:cur.filter(x=>x!==pid)}; // deselect
+      if (cur.length >= teamCap) return f; // cap reached — ignore
+      return {...f,[k]:[...cur,pid]};
+    });
+  };
+
+  // Tap name = smart assign: goes to T1 if space, T2 if T1 full, deselects if already on a team
+  const tapName = (pid) => {
+    const inT1 = form.team1.includes(pid);
+    const inT2 = form.team2.includes(pid);
+    if (inT1) { toggle(1, pid); return; } // deselect from T1
+    if (inT2) { toggle(2, pid); return; } // deselect from T2
+    if (form.team1.length < teamCap) { toggle(1, pid); } // T1 has room
+    else if (form.team2.length < teamCap) { toggle(2, pid); } // T1 full, use T2
+    // both full — ignore
   };
   const submit = () => {
     if (!form.team1.length||!form.team2.length) return alert('Each team needs at least one player.');
@@ -1498,6 +1518,24 @@ function LogMatchModal({ players, onClose, onLog, currentUser }) {
     <div className="modal-bg" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="modal">
         <div className="modal-title">Log a Match</div>
+        <details style={{marginBottom:10,background:'rgba(200,255,0,0.03)',border:'1px solid rgba(200,255,0,0.1)',borderRadius:5,padding:'0'}}>
+          <summary style={{fontFamily:'DM Mono,monospace',fontSize:9,letterSpacing:'0.12em',textTransform:'uppercase',color:'rgba(200,255,0,0.5)',cursor:'pointer',padding:'7px 12px',userSelect:'none',listStyle:'none',display:'flex',alignItems:'center',gap:6}}>
+            <span>▸</span> Pickleball scoring tips
+          </summary>
+          <div style={{padding:'8px 12px 10px',borderTop:'1px solid rgba(200,255,0,0.08)'}}>
+            {[
+              ['Rec play','Games to 11, win by 2. Rally scoring (every point counts).'],
+              ['Tournament','Games to 15 or 21. Best of 3 common.'],
+              ['Doubles','Kitchen (NVZ) faults count. Server calls score as: server–receiver–serving team.'],
+              ['Quick tip','Log the score as played — app handles W/L automatically.'],
+            ].map(([t,d])=>(
+              <div key={t} style={{marginBottom:6}}>
+                <span style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:11,textTransform:'uppercase',color:'#c8ff00',letterSpacing:'0.08em'}}>{t}: </span>
+                <span style={{fontSize:11,color:'#5a5a6e'}}>{d}</span>
+              </div>
+            ))}
+          </div>
+        </details>
 
         {/* Sport chips */}
         <div className="ff" style={{marginBottom:10}}>
@@ -1514,22 +1552,31 @@ function LogMatchModal({ players, onClose, onLog, currentUser }) {
             {players.map(p => {
               const inT1=form.team1.includes(p.id), inT2=form.team2.includes(p.id);
               return (
-                <div key={p.id} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0'}}>
+                <div key={p.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',cursor:'pointer',borderRadius:4,transition:'background 0.1s'}}
+                  onClick={()=>tapName(p.id)}
+                  onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.03)'}
+                  onMouseLeave={e=>e.currentTarget.style.background=''}>
                   <Av player={p} size={26} />
                   <span style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:13,textTransform:'uppercase',flex:1,color:inT1?'#c8ff00':inT2?'rgba(200,255,0,0.5)':'#5a5a6e'}}>{p.name}</span>
-                  <button type="button" onClick={()=>toggle(1,p.id)} style={btnStyle(inT1)}>T1</button>
-                  <button type="button" onClick={()=>toggle(2,p.id)} style={btnStyle(inT2)}>T2</button>
+                  {inT1&&<span style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:10,fontWeight:700,letterSpacing:'0.1em',padding:'2px 7px',borderRadius:3,background:'rgba(200,255,0,0.12)',color:'#c8ff00',border:'1px solid rgba(200,255,0,0.3)',flexShrink:0}}>T1</span>}
+                  {inT2&&<span style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:10,fontWeight:700,letterSpacing:'0.1em',padding:'2px 7px',borderRadius:3,background:'rgba(200,255,0,0.05)',color:'rgba(200,255,0,0.55)',border:'1px solid rgba(200,255,0,0.2)',flexShrink:0}}>T2</span>}
+                  {!inT1&&!inT2&&<span style={{fontFamily:'DM Mono,monospace',fontSize:9,color:'#2a2a35',flexShrink:0,width:28,textAlign:'center'}}>—</span>}
                 </div>
               );
             })}
           </div>
           {(form.team1.length>0||form.team2.length>0) && (
-            <div className="mono" style={{marginTop:6,fontSize:10}}>
-              T1: {form.team1.map(id=>players.find(p=>p.id===id)?.name.split(' ')[0]).join(' & ')||'—'}
-              &nbsp;vs&nbsp;
-              T2: {form.team2.map(id=>players.find(p=>p.id===id)?.name.split(' ')[0]).join(' & ')||'—'}
+             <div style={{marginTop:6,padding:'6px 8px',background:'rgba(0,0,0,0.2)',borderRadius:4}}>
+              <div className="mono" style={{fontSize:10,marginBottom:3}}>
+                {form.team1.length>=2&&form.team2.length>=2&&<span style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:9,fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',padding:'1px 5px',borderRadius:2,background:'rgba(200,255,0,0.1)',color:'#c8ff00',border:'1px solid rgba(200,255,0,0.2)',marginRight:6}}>DOUBLES</span>}
+                <span style={{color:'#5a5a6e'}}>T1: </span>{form.team1.map(id=>players.find(p=>p.id===id)?.name.split(' ')[0]).join(' & ')||'—'}
+                <span style={{color:'#2a2a35',margin:'0 4px'}}>vs</span>
+                <span style={{color:'#5a5a6e'}}>T2: </span>{form.team2.map(id=>players.find(p=>p.id===id)?.name.split(' ')[0]).join(' & ')||'—'}
+              </div>
+              <div style={{fontFamily:'DM Mono,monospace',fontSize:9,color:'#3a3a4e',letterSpacing:'0.04em'}}>
+                Tap name to assign · max {teamCap} per side · tap again to remove
+              </div>
             </div>
-          )}
         </div>
 
         {/* Score steppers — +/- buttons, no keyboard needed */}
@@ -1739,7 +1786,7 @@ function ProfilePage({ playerId, data, setData, onBack, currentUser, pushUpdate,
                     onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
                     onMouseLeave={e=>e.currentTarget.style.background=''}>
                     <td style={{fontFamily:"DM Mono,monospace",fontSize:10,color:"#5a5a6e",whiteSpace:"nowrap",paddingRight:4}}>{fmtDate(m.date)}</td>
-                    <td><span className="sbadge">{SPORT_ICONS[m.sport]||m.sport.slice(0,3)}</span></td>
+                    <td style={{whiteSpace:'nowrap'}}><span className="sbadge">{SPORT_ICONS[m.sport]||m.sport.slice(0,3)}</span>{(m.team1.length>=2||m.team2.length>=2)&&<span style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:8,fontWeight:700,marginLeft:2,color:'rgba(200,255,0,0.5)',letterSpacing:'0.08em',textTransform:'uppercase'}}>2v2</span>}</td>
                     <td style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:13,textTransform:'uppercase',color:'#9898a8',maxWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name(opp)}</td>
                     <td style={{textAlign:'center',whiteSpace:'nowrap'}}>
                       <span style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:900,fontSize:18,color:won?'#c8ff00':'#ff4d6a'}}>{ms}</span>
@@ -2116,6 +2163,7 @@ function AdminPage({ data, setData, pushUpdate, currentUser, onBack }) {
   const { players, matches, banter } = data;
   const [tab, setTab] = useState('matches');
   const [editMatch, setEditMatch] = useState(null);
+  const [editPlayer, setEditPlayer] = useState(null);
   const [editForm, setEditForm] = useState(null);
   const [confirm, setConfirm] = useState(null); // {type, id, label}
   const name = ids => ids.map(id=>{const p=players.find(x=>x.id===id);return p?p.name.split(' ')[0]:'?';}).join(' & ');
@@ -2149,6 +2197,13 @@ function AdminPage({ data, setData, pushUpdate, currentUser, onBack }) {
     const next = {...data, banter: banter.filter(b=>b.id!==id)};
     setData(next); await pushUpdate(next);
     toast({type:'admin',icon:'🗑',title:'Post removed'});
+    setConfirm(null);
+  };
+
+  const resetPin = async (id) => {
+    const next = {...data, players: players.map(p=>p.id===id?{...p,pinHash:null}:p)};
+    setData(next); await pushUpdate(next);
+    toast({type:'admin',icon:'ok',title:'PIN reset',msg:'Player can now set a new PIN on next login.'});
     setConfirm(null);
   };
 
@@ -2251,6 +2306,21 @@ function AdminPage({ data, setData, pushUpdate, currentUser, onBack }) {
       {tab==='players' && (
         <div className="admin-section">
           <div className="admin-section-title">👥 Roster Management <span style={{fontFamily:'DM Mono,monospace',fontSize:9,color:'var(--text3)',fontWeight:400,textTransform:'none',letterSpacing:'0.06em'}}>Removing a player also removes their matches and posts.</span></div>
+          {editPlayer && (
+            <div style={{background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:5,padding:12,marginBottom:10}}>
+              <div style={{fontFamily:'Barlow Condensed,sans-serif',fontSize:11,fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--neon)',marginBottom:10}}>Edit Player</div>
+              <div className="ff" style={{marginBottom:8}}><label>Name</label><input type="text" value={editPlayer.name} onChange={e=>setEditPlayer({...editPlayer,name:e.target.value})} /></div>
+              <div className="ff" style={{marginBottom:10}}><label>Handle</label><input type="text" value={editPlayer.handle} onChange={e=>setEditPlayer({...editPlayer,handle:e.target.value})} /></div>
+              <div style={{display:'flex',gap:6}}>
+                <button className="btn btn-primary btn-sm" onClick={async()=>{
+                  const next={...data,players:players.map(p=>p.id===editPlayer.id?{...p,name:editPlayer.name,handle:editPlayer.handle}:p)};
+                  setData(next); await pushUpdate(next); setEditPlayer(null);
+                  toast({type:'admin',icon:'ok',title:'Player updated'});
+                }}>Save</button>
+                <button className="btn btn-ghost btn-sm" onClick={()=>setEditPlayer(null)}>Cancel</button>
+              </div>
+            </div>
+          )}
           {players.map(p=>(
             <div key={p.id} className="admin-row">
               <Av player={p} size={28} />
@@ -2258,8 +2328,12 @@ function AdminPage({ data, setData, pushUpdate, currentUser, onBack }) {
                 <div style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:13,textTransform:'uppercase',color:'var(--text)'}}>{p.name} {ADMIN_NAMES.some(n=>p.name.toLowerCase().startsWith(n.toLowerCase())) && <span className="admin-badge" style={{fontSize:'8px',padding:'1px 4px'}}>Admin</span>}</div>
                 <div style={{fontFamily:'DM Mono,monospace',fontSize:9,color:'var(--text3)'}}>{p.handle} · {p.wins}W {p.losses}L</div>
               </div>
+              <button className="admin-edit" style={{fontSize:'9px',padding:'2px 7px'}} onClick={()=>setEditPlayer({id:p.id,name:p.name,handle:p.handle||''})}>Edit</button>
               {p.id !== currentUser && (
                 <button className="admin-del" onClick={()=>setConfirm({type:'player',id:p.id,label:p.name})}>Remove</button>
+              )}
+              {p.id !== currentUser && (
+                <button className="admin-edit" style={{fontSize:'9px',padding:'2px 7px',borderColor:'rgba(255,184,0,0.3)',color:'var(--gold)'}} onClick={()=>setConfirm({type:'resetpin',id:p.id,label:p.name})}>Reset PIN</button>
               )}
             </div>
           ))}
@@ -2272,12 +2346,17 @@ function AdminPage({ data, setData, pushUpdate, currentUser, onBack }) {
           <div className="modal" style={{maxWidth:360}}>
             <div className="modal-title" style={{color:'var(--loss)'}}>Confirm Delete</div>
             <div style={{fontSize:13,color:'var(--text2)',marginBottom:16,lineHeight:1.6}}>
-              Are you sure you want to {confirm.type==='banter'?'remove the post':'delete'} <b style={{color:'var(--text)'}}>{confirm.label}</b>? This cannot be undone.
+              {confirm.type==='resetpin'?`Reset ${confirm.label}'s PIN? They can set a new one on next login.`:`Are you sure you want to ${confirm.type==='banter'?'remove the post':'delete'} `}{confirm.type!=='resetpin'&&<b style={{color:'var(--text)'}}>{confirm.label}</b>}{confirm.type!=='resetpin'&&' ? This cannot be undone.'}
             </div>
             <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
               <button className="btn btn-ghost btn-sm" onClick={()=>setConfirm(null)}>Cancel</button>
               <button className="btn btn-sm" style={{background:'var(--loss)',color:'#fff',border:'none'}}
-                onClick={()=>confirm.type==='match'?deleteMatch(confirm.id):confirm.type==='banter'?deleteBanter(confirm.id):deletePlayer(confirm.id)}>
+                onClick={()=>{
+                  if(confirm.type==='match') deleteMatch(confirm.id);
+                  else if(confirm.type==='banter') deleteBanter(confirm.id);
+                  else if(confirm.type==='resetpin') resetPin(confirm.id);
+                  else deletePlayer(confirm.id);
+                }}>
                 Yes, Delete
               </button>
             </div>
@@ -2477,7 +2556,7 @@ function App() {
   const [syncStatus,  setSyncStatus]  = useState('loading');
   const [lastSync,    setLastSync]    = useState('');
   const [page,        setPage]        = useState('scoreboard');
-  const [sport,       setSport]       = useState('Badminton');
+  const [sport,       setSport]       = useState('Pickleball');
   const [viewPlayer,  setViewPlayer]  = useState(null);
   const [currentUser, setCurrentUser] = useState(() => getSession()?.id || null);
   const [prevData,    setPrevData]    = useState(null);
