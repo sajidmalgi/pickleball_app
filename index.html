@@ -1479,6 +1479,7 @@ function ResultsPage({ data, setData, sport, pushUpdate, onRefresh, currentUser 
 
 function LogMatchModal({ players, onClose, onLog, currentUser }) {
   const [form, setForm] = useState({sport:SPORTS[0],date:today(),team1:currentUser?[currentUser]:[],team2:[],score1:0,score2:0,note:''});
+  const [showTips, setShowTips] = useState(false);
   const adj = (field, delta) => setForm(f=>({...f,[field]:Math.max(0,parseInt(f[field]||0)+delta)}));
   // Cap per team — 2 for Pickleball doubles, 3 for volleyball, 1 for singles sports
   const teamCap = ['Tennis','Table Tennis','Badminton'].includes(form.sport) ? 1 : 2;
@@ -1518,24 +1519,19 @@ function LogMatchModal({ players, onClose, onLog, currentUser }) {
     <div className="modal-bg" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="modal">
         <div className="modal-title">Log a Match</div>
-        <details style={{marginBottom:10,background:'rgba(200,255,0,0.03)',border:'1px solid rgba(200,255,0,0.1)',borderRadius:5,padding:'0'}}>
-          <summary style={{fontFamily:'DM Mono,monospace',fontSize:9,letterSpacing:'0.12em',textTransform:'uppercase',color:'rgba(200,255,0,0.5)',cursor:'pointer',padding:'7px 12px',userSelect:'none',listStyle:'none',display:'flex',alignItems:'center',gap:6}}>
-            <span>▸</span> Pickleball scoring tips
-          </summary>
-          <div style={{padding:'8px 12px 10px',borderTop:'1px solid rgba(200,255,0,0.08)'}}>
-            {[
-              ['Rec play','Games to 11, win by 2. Rally scoring (every point counts).'],
-              ['Tournament','Games to 15 or 21. Best of 3 common.'],
-              ['Doubles','Kitchen (NVZ) faults count. Server calls score as: server–receiver–serving team.'],
-              ['Quick tip','Log the score as played — app handles W/L automatically.'],
-            ].map(([t,d])=>(
-              <div key={t} style={{marginBottom:6}}>
+{showTips && (
+          <div style={{marginBottom:10,background:'rgba(200,255,0,0.03)',border:'1px solid rgba(200,255,0,0.1)',borderRadius:5,padding:'8px 12px 10px'}}>
+            {[['Rec play','Games to 11, win by 2. Rally scoring.'],['Tournament','Games to 15 or 21. Best of 3 common.'],['Doubles','Kitchen faults count. Score called: server–receiver–serving team.'],['Quick tip','Log score as played — app handles W/L.']].map(([t,d])=>(
+              <div key={t} style={{marginBottom:5}}>
                 <span style={{fontFamily:'Barlow Condensed,sans-serif',fontWeight:700,fontSize:11,textTransform:'uppercase',color:'#c8ff00',letterSpacing:'0.08em'}}>{t}: </span>
                 <span style={{fontSize:11,color:'#5a5a6e'}}>{d}</span>
               </div>
             ))}
           </div>
-        </details>
+        )}
+        <button type="button" onClick={()=>setShowTips(t=>!t)} style={{fontFamily:'DM Mono,monospace',fontSize:9,letterSpacing:'0.12em',textTransform:'uppercase',color:'rgba(200,255,0,0.4)',background:'none',border:'none',cursor:'pointer',padding:'0 0 8px',display:'block'}}>
+          {showTips?'▾':'▸'} Pickleball scoring tips
+        </button>
 
         {/* Sport chips */}
         <div className="ff" style={{marginBottom:10}}>
@@ -1992,16 +1988,16 @@ function RationsPage({ data, setData, pushUpdate, currentUser }) {
               </div>
             </div>
             <div className="ff"><label>Description</label><textarea value={form.desc} onChange={e=>setForm({...form,desc:e.target.value})} rows={2} placeholder="What's in it? Keep it short." /></div>
-            <details style={{marginBottom:12}}>
-              <summary style={{fontFamily:'DM Mono,monospace',fontSize:10,letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text3)',cursor:'pointer',userSelect:'none'}}>Macros (optional)</summary>
-              <div style={{marginTop:10}}>
+            <div style={{marginBottom:12,borderTop:'1px solid var(--border)',paddingTop:10}}>
+              <div style={{fontFamily:'DM Mono,monospace',fontSize:9,letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text3)',marginBottom:8}}>Macros (optional)</div>
+              <div>
                 <div className="grid-2">
                   <div className="ff"><label>Protein (g)</label><input type="number" min="0" value={form.protein} onChange={e=>setForm({...form,protein:parseInt(e.target.value)||0})} /></div>
                   <div className="ff"><label>Carbs (g)</label><input type="number" min="0" value={form.carbs} onChange={e=>setForm({...form,carbs:parseInt(e.target.value)||0})} /></div>
                 </div>
                 <div className="ff"><label>Fat (g)</label><input type="number" min="0" value={form.fat} onChange={e=>setForm({...form,fat:parseInt(e.target.value)||0})} /></div>
               </div>
-            </details>
+            </div>
             <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
               <button className="btn btn-ghost btn-sm" onClick={()=>{setShowAdd(false);setEditId(null);}}>Cancel</button>
               <button className="btn btn-primary btn-sm" onClick={saveMeal}>Save</button>
