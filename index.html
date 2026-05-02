@@ -1392,6 +1392,41 @@
         color: var(--gold);
         border: 1px solid rgba(255, 184, 0, 0.3);
       }
+      /* Title badges — admin-assignable flair shown across the app.
+         Sizing matches admin-badge so badges line up next to it.
+         Each variant gets its own colorway from the registry below. */
+      .title-badge {
+        font-family: "Barlow Condensed", sans-serif;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        padding: 2px 7px;
+        border-radius: 2px;
+        border: 1px solid;
+        white-space: nowrap;
+      }
+      .title-badge.t-nemesis {
+        background: rgba(255, 56, 96, 0.14);
+        color: #ff5577;
+        border-color: rgba(255, 56, 96, 0.4);
+      }
+      .title-badge.t-legend {
+        background: rgba(255, 184, 0, 0.16);
+        color: #ffc94d;
+        border-color: rgba(255, 184, 0, 0.45);
+      }
+      .title-badge.t-jester {
+        background: rgba(180, 110, 255, 0.14);
+        color: #c89bff;
+        border-color: rgba(180, 110, 255, 0.4);
+      }
+      /* Tiny variant for cramped spots like the leaderboard rows */
+      .title-badge.tb-mini {
+        font-size: 8px;
+        padding: 1px 5px;
+        letter-spacing: 0.1em;
+      }
       .admin-section {
         background: rgba(255, 184, 0, 0.04);
         border: 1px solid rgba(255, 184, 0, 0.15);
@@ -1547,14 +1582,15 @@
       // Change this to something only you and Abby know
       const ADMIN_PIN = "0000";
 
-      const SPORTS = ["Pickleball", "Badminton", "Tennis", "Table Tennis"];
+      const SPORTS = ["Pickleball"];
       const SPORT_ICONS = {
-        Badminton: "BAD",
         Pickleball: "PCK",
-        Volleyball: "VBL",
-        Basketball: "BSK",
+        // Legacy sport icons retained so old match history still displays correctly
+        Badminton: "BAD",
         Tennis: "TEN",
         "Table Tennis": "TT",
+        Volleyball: "VBL",
+        Basketball: "BSK",
       };
 
       // Single avatar color — consistent brand look until user sets a photo
@@ -1631,6 +1667,22 @@
           .join("")
           .toUpperCase()
           .slice(0, 2);
+      // Relative time display — "5m ago", "2h ago", "yesterday", "Mar 14"
+      // Accepts a numeric timestamp (ms). Falls back to the legacy "just now" string for old posts.
+      const relTime = (ts) => {
+        if (!ts || typeof ts !== "number") return "just now";
+        const diff = Date.now() - ts;
+        if (diff < 0 || diff < 45000) return "just now";
+        const mins = Math.floor(diff / 60000);
+        if (mins < 60) return `${mins}m ago`;
+        const hrs = Math.floor(mins / 60);
+        if (hrs < 24) return `${hrs}h ago`;
+        const days = Math.floor(hrs / 24);
+        if (days === 1) return "yesterday";
+        if (days < 7) return `${days}d ago`;
+        const d = new Date(ts);
+        return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      };
       const hashPin = async (pin) => {
         const buf = await crypto.subtle.digest(
           "SHA-256",
@@ -1668,6 +1720,65 @@
           )
         );
       };
+      // ─── PLAYER TITLES ────────────────────────────────────────────────────────────
+      // Admin-assignable flair shown next to the player's name across the app.
+      // Stored on the player doc as `titles: ["nemesis", "legend", ...]`.
+      // Multiple titles allowed per player. Add new ones here — UI follows the registry.
+      const TITLES = [
+        {
+          id: "nemesis",
+          label: "The Nemesis",
+          short: "Nemesis",
+          icon: "☠",
+          desc: "Resident antagonist — handle with caution.",
+          cssClass: "t-nemesis",
+        },
+        {
+          id: "legend",
+          label: "Legend",
+          short: "Legend",
+          icon: "★",
+          desc: "Legendary status — hall-of-famer of the crew.",
+          cssClass: "t-legend",
+        },
+        {
+          id: "jester",
+          label: "Court Jester",
+          short: "Jester",
+          icon: "🃏",
+          desc: "Comic relief — keeps the dispatch board honest.",
+          cssClass: "t-jester",
+        },
+      ];
+      const TITLES_BY_ID = TITLES.reduce((a, t) => ((a[t.id] = t), a), {});
+      // Get the list of title objects for a player. Tolerates missing/legacy data.
+      const getTitles = (player) => {
+        if (!player || !Array.isArray(player.titles)) return [];
+        return player.titles
+          .map((id) => TITLES_BY_ID[id])
+          .filter(Boolean);
+      };
+      // Compact <PlayerTitles /> renderer — drop in next to a player name anywhere.
+      // `mini` shrinks to fit cramped spots (leaderboard rows, results table).
+      // `iconOnly` shows just the symbol with the full label as a tooltip.
+      function PlayerTitles({ player, mini = false, iconOnly = false }) {
+        const ts = getTitles(player);
+        if (!ts.length) return null;
+        return (
+          <>
+            {ts.map((t) => (
+              <span
+                key={t.id}
+                className={`title-badge ${t.cssClass}${mini ? " tb-mini" : ""}`}
+                title={t.desc}
+                style={{ flexShrink: 0 }}
+              >
+                {iconOnly ? t.icon : `${t.icon} ${t.short}`}
+              </span>
+            ))}
+          </>
+        );
+      }
 
       // ─── PHOTO STORAGE ────────────────────────────────────────────────────────────
       // Photos are resized to 120px and stored as base64 in the player Firestore doc.
@@ -3636,6 +3747,7 @@
                                   ✓
                                 </span>
                               )}
+                              <PlayerTitles player={p} mini iconOnly />
                             </div>
                           </td>
                           <td>
@@ -4636,6 +4748,7 @@
                     Admin
                   </span>
                 )}
+                <PlayerTitles player={player} mini />
               </div>
               {player.bio ? (
                 <div
@@ -5076,6 +5189,17 @@
                             }}
                           >
                             {name(m.team1)}
+                            {m.team1
+                              .map((id) => players.find((x) => x.id === id))
+                              .filter((p) => p && getTitles(p).length)
+                              .map((p) => (
+                                <span
+                                  key={p.id}
+                                  style={{ marginLeft: 4 }}
+                                >
+                                  <PlayerTitles player={p} mini iconOnly />
+                                </span>
+                              ))}
                           </td>
                           <td
                             style={{
@@ -5127,6 +5251,17 @@
                             }}
                           >
                             {name(m.team2)}
+                            {m.team2
+                              .map((id) => players.find((x) => x.id === id))
+                              .filter((p) => p && getTitles(p).length)
+                              .map((p) => (
+                                <span
+                                  key={p.id}
+                                  style={{ marginLeft: 4 }}
+                                >
+                                  <PlayerTitles player={p} mini iconOnly />
+                                </span>
+                              ))}
                           </td>
                           <td
                             className="rt-hide mono"
@@ -5172,6 +5307,7 @@
       function LogMatchModal({ players, onClose, onLog, currentUser }) {
         const [form, setForm] = useState({
           sport: SPORTS[0],
+          format: "doubles",
           date: today(),
           team1: currentUser ? [currentUser] : [],
           team2: [],
@@ -5184,12 +5320,8 @@
             ...f,
             [field]: Math.max(0, parseInt(f[field] || 0) + delta),
           }));
-        // Cap per team — 2 for Pickleball doubles, 3 for volleyball, 1 for singles sports
-        const teamCap = ["Tennis", "Table Tennis", "Badminton"].includes(
-          form.sport,
-        )
-          ? 1
-          : 2;
+        // Cap per team — 2 for doubles, 1 for singles
+        const teamCap = form.format === "singles" ? 1 : 2;
 
         const toggle = (team, pid) => {
           const other = team === 1 ? "team2" : "team1";
@@ -5230,6 +5362,8 @@
           onLog({
             ...form,
             id: Date.now(),
+            sport: "Pickleball",
+            format: form.format,
             score1: parseInt(form.score1) || 0,
             score2: parseInt(form.score2) || 0,
             team1: [...form.team1],
@@ -5282,9 +5416,9 @@
             <div className="modal">
               <div className="modal-title">Log a Match</div>
 
-              {/* Sport chips */}
+              {/* Format chips — singles or doubles */}
               <div className="ff" style={{ marginBottom: 10 }}>
-                <label>Sport</label>
+                <label>Format</label>
                 <div
                   style={{
                     display: "flex",
@@ -5293,14 +5427,28 @@
                     marginTop: 4,
                   }}
                 >
-                  {SPORTS.map((s) => (
+                  {[
+                    ["singles", "Singles (1v1)"],
+                    ["doubles", "Doubles (2v2)"],
+                  ].map(([id, lbl]) => (
                     <button
-                      key={s}
+                      key={id}
                       type="button"
-                      onClick={() => setForm((f) => ({ ...f, sport: s }))}
-                      style={btnStyle(form.sport === s)}
+                      onClick={() =>
+                        setForm((f) => {
+                          // If switching to singles, trim teams to 1 player each
+                          const cap = id === "singles" ? 1 : 2;
+                          return {
+                            ...f,
+                            format: id,
+                            team1: f.team1.slice(0, cap),
+                            team2: f.team2.slice(0, cap),
+                          };
+                        })
+                      }
+                      style={btnStyle(form.format === id)}
                     >
-                      {s}
+                      {lbl}
                     </button>
                   ))}
                 </div>
@@ -5627,10 +5775,15 @@
         // Profile editing (bio, handle, photo) = own profile only
         // Admin powers live in the Admin panel, not here
         const [editing, setEditing] = useState(false);
+        const [editName, setEditName] = useState(player.name);
         const [editBio, setEditBio] = useState(player.bio);
         const [editHandle, setEditHandle] = useState(player.handle);
         const [editSport, setEditSport] = useState(player.favSport);
         const [editPfp, setEditPfp] = useState(player.pfp || "");
+        const [editGear, setEditGear] = useState(player.gear || "");
+        const [editNationality, setEditNationality] = useState(
+          player.nationality || "",
+        );
         const [changePIN, setChangePIN] = useState(false);
         const [pin, setPin] = useState(["", "", "", ""]);
         const [pin2, setPin2] = useState(["", "", "", ""]);
@@ -5665,16 +5818,38 @@
 
         const saveProfile = async () => {
           const pfp = editPfp || player.pfp || null;
+          // Validate name — required, trimmed, length-capped, no duplicates within the crew
+          const cleanName = (editName || "").trim();
+          if (!cleanName) {
+            alert("Name can't be empty.");
+            return;
+          }
+          if (cleanName.length > 30) {
+            alert("Name must be 30 characters or fewer.");
+            return;
+          }
+          const dupe = players.find(
+            (p) =>
+              p.id !== player.id &&
+              p.name.trim().toLowerCase() === cleanName.toLowerCase(),
+          );
+          if (dupe) {
+            alert("Someone in the crew already has that name. Pick another.");
+            return;
+          }
           const next = {
             ...data,
             players: players.map((p) =>
               p.id === player.id
                 ? {
                     ...p,
+                    name: cleanName,
                     bio: editBio,
                     handle: editHandle,
                     favSport: editSport,
                     pfp: pfp,
+                    gear: (editGear || "").trim().slice(0, 200),
+                    nationality: (editNationality || "").trim().slice(0, 60),
                   }
                 : p,
             ),
@@ -5753,6 +5928,7 @@
                       Admin
                     </span>
                   )}
+                  <PlayerTitles player={player} />
                 </div>
                 {editing ? (
                   <input
@@ -5768,6 +5944,26 @@
                 )}
                 {editing ? (
                   <>
+                    <div className="ff" style={{ marginTop: 8 }}>
+                      <label>Display Name</label>
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        maxLength={30}
+                        style={{ marginTop: 8, fontSize: 13 }}
+                      />
+                      <div
+                        style={{
+                          fontSize: 10,
+                          color: "var(--text3)",
+                          marginTop: 4,
+                          fontStyle: "italic",
+                        }}
+                      >
+                        Match history is preserved when you change your name.
+                      </div>
+                    </div>
                     <div className="ff" style={{ marginTop: 8 }}>
                       <label>Bio / Tagline</label>
                       <textarea
@@ -5796,6 +5992,38 @@
                         ))}
                       </select>
                     </div>
+                    <div className="ff" style={{ marginTop: 8 }}>
+                      <label>Gear / Equipment</label>
+                      <input
+                        type="text"
+                        value={editGear}
+                        onChange={(e) => setEditGear(e.target.value)}
+                        maxLength={200}
+                        placeholder="e.g. Selkirk paddle, Court 1 indoor shoes"
+                        style={{ marginTop: 8, fontSize: 13 }}
+                      />
+                    </div>
+                    <div className="ff" style={{ marginTop: 8 }}>
+                      <label>Nationality</label>
+                      <input
+                        type="text"
+                        value={editNationality}
+                        onChange={(e) => setEditNationality(e.target.value)}
+                        maxLength={60}
+                        placeholder="e.g. Canadian, Pakistani 🇵🇰, etc."
+                        style={{ marginTop: 8, fontSize: 13 }}
+                      />
+                      <div
+                        style={{
+                          fontSize: 10,
+                          color: "var(--text3)",
+                          marginTop: 4,
+                          fontStyle: "italic",
+                        }}
+                      >
+                        Tip: paste a flag emoji to make it pop.
+                      </div>
+                    </div>
                     <div style={{ marginTop: 12 }}>
                       <PhotoUpload
                         player={player}
@@ -5813,6 +6041,56 @@
                     }}
                   >
                     {player.bio || "No bio yet."}
+                  </div>
+                )}
+                {!editing && (player.gear || player.nationality) && (
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 14,
+                      flexWrap: "wrap",
+                      marginTop: 8,
+                      fontFamily: "DM Mono,monospace",
+                      fontSize: 11,
+                      color: "var(--text3)",
+                    }}
+                  >
+                    {player.nationality && (
+                      <div>
+                        <span
+                          style={{
+                            fontSize: 9,
+                            letterSpacing: "0.12em",
+                            textTransform: "uppercase",
+                            color: "#5a5a6e",
+                            marginRight: 6,
+                          }}
+                        >
+                          From
+                        </span>
+                        <span style={{ color: "var(--text2)" }}>
+                          {player.nationality}
+                        </span>
+                      </div>
+                    )}
+                    {player.gear && (
+                      <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+                        <span
+                          style={{
+                            fontSize: 9,
+                            letterSpacing: "0.12em",
+                            textTransform: "uppercase",
+                            color: "#5a5a6e",
+                            marginRight: 6,
+                          }}
+                        >
+                          Gear
+                        </span>
+                        <span style={{ color: "var(--text2)" }}>
+                          {player.gear}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
                 {isMe && !player.signed && (
@@ -5887,10 +6165,13 @@
                           className="btn btn-ghost btn-sm"
                           onClick={() => {
                             setEditing(true);
+                            setEditName(player.name);
                             setEditBio(player.bio);
                             setEditHandle(player.handle);
                             setEditSport(player.favSport);
                             setEditPfp(player.pfp || "");
+                            setEditGear(player.gear || "");
+                            setEditNationality(player.nationality || "");
                           }}
                         >
                           Edit Profile
@@ -7111,6 +7392,7 @@
           banter.reduce((a, b) => ({ ...a, [b.id]: b.reactions }), {}),
         );
         const [showCompose, setShowCompose] = useState(false);
+        const [showAllPosts, setShowAllPosts] = useState(false);
         const listRef = useRef(null);
         useEffect(() => {
           setRxns(banter.reduce((a, b) => ({ ...a, [b.id]: b.reactions }), {}));
@@ -7149,6 +7431,7 @@
             playerId: currentUser,
             text: text.trim(),
             time: "just now",
+            ts: Date.now(),
             reactions: {
               fire: 0,
               skull: 0,
@@ -7251,58 +7534,113 @@
               {banter.length === 0 && (
                 <div className="empty">Nothing yet — be first to talk.</div>
               )}
-              {banter.map((b) => {
-                const p = players.find((x) => x.id === b.playerId);
-                if (!p) return null;
-                const r = {
-                  ...{
-                    fire: 0,
-                    skull: 0,
-                    trophy: 0,
-                    laugh: 0,
-                    clap: 0,
-                    eyes: 0,
-                  },
-                  ...(rxns[b.id] || b.reactions),
-                };
-                return (
-                  <div key={b.id} className="bp">
-                    <div className="bp-meta">
-                      <Av player={p} size={26} />
-                      <span className="bp-author">{p.name}</span>
-                      <span className="bp-time">{b.time}</span>
+              {(() => {
+                // Sort newest-first using `ts` if present, falling back to numeric `id`
+                // (`id` is from Date.now() so it's a reliable timestamp for legacy posts)
+                const sorted = [...banter].sort((a, b) => {
+                  const aT = typeof a.ts === "number" ? a.ts : (typeof a.id === "number" ? a.id : 0);
+                  const bT = typeof b.ts === "number" ? b.ts : (typeof b.id === "number" ? b.id : 0);
+                  return bT - aT;
+                });
+                const VISIBLE_CAP = 8;
+                const visible = showAllPosts ? sorted : sorted.slice(0, VISIBLE_CAP);
+                return visible.map((b) => {
+                  const p = players.find((x) => x.id === b.playerId);
+                  if (!p) return null;
+                  const r = {
+                    ...{
+                      fire: 0,
+                      skull: 0,
+                      trophy: 0,
+                      laugh: 0,
+                      clap: 0,
+                      eyes: 0,
+                    },
+                    ...(rxns[b.id] || b.reactions),
+                  };
+                  // Prefer real timestamp; fall back to legacy stored b.time string
+                  const timeLabel = typeof b.ts === "number"
+                    ? relTime(b.ts)
+                    : (typeof b.id === "number" && b.id > 1000000000000
+                        ? relTime(b.id)
+                        : (b.time || ""));
+                  return (
+                    <div key={b.id} className="bp">
+                      <div className="bp-meta">
+                        <Av player={p} size={26} />
+                        <span className="bp-author">{p.name}</span>
+                        <span className="bp-time">{timeLabel}</span>
+                      </div>
+                      <div className="bp-text">{b.text}</div>
+                      <div
+                        className="bp-rxns"
+                        style={{ flexWrap: "wrap", gap: 5 }}
+                      >
+                        {ALL_REACTIONS.map(([k, e]) => {
+                          const reacted = hasReacted(b.id, k);
+                          return (
+                            <button
+                              key={k}
+                              className="bp-btn"
+                              onClick={() => react(b.id, k)}
+                              style={{
+                                opacity: r[k] ? 1 : 0.4,
+                                transition: "all 0.15s",
+                                borderColor: reacted ? "var(--neon)" : undefined,
+                                color: reacted ? "var(--neon)" : undefined,
+                                background: reacted
+                                  ? "rgba(200,255,0,0.08)"
+                                  : undefined,
+                              }}
+                              title={reacted ? "Tap to remove" : "React"}
+                            >
+                              {e} {r[k] || 0}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <div className="bp-text">{b.text}</div>
-                    <div
-                      className="bp-rxns"
-                      style={{ flexWrap: "wrap", gap: 5 }}
-                    >
-                      {ALL_REACTIONS.map(([k, e]) => {
-                        const reacted = hasReacted(b.id, k);
-                        return (
-                          <button
-                            key={k}
-                            className="bp-btn"
-                            onClick={() => react(b.id, k)}
-                            style={{
-                              opacity: r[k] ? 1 : 0.4,
-                              transition: "all 0.15s",
-                              borderColor: reacted ? "var(--neon)" : undefined,
-                              color: reacted ? "var(--neon)" : undefined,
-                              background: reacted
-                                ? "rgba(200,255,0,0.08)"
-                                : undefined,
-                            }}
-                            title={reacted ? "Tap to remove" : "React"}
-                          >
-                            {e} {r[k] || 0}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
+              {banter.length > 8 && (
+                <div
+                  style={{
+                    textAlign: "center",
+                    padding: "12px 0 14px",
+                    borderTop: "1px solid var(--border2)",
+                    marginTop: 4,
+                  }}
+                >
+                  <button
+                    onClick={() => setShowAllPosts((v) => !v)}
+                    style={{
+                      fontFamily: "Barlow Condensed,sans-serif",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      letterSpacing: "0.12em",
+                      textTransform: "uppercase",
+                      padding: "6px 14px",
+                      borderRadius: 4,
+                      cursor: "pointer",
+                      border: "1px solid var(--border2)",
+                      background: "none",
+                      color: "var(--text3)",
+                      transition: "all 0.15s",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.color = "var(--neon)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.color = "var(--text3)")
+                    }
+                  >
+                    {showAllPosts
+                      ? "↑ Show fewer"
+                      : `↓ Show older (${banter.length - 8})`}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Fixed compose bar at bottom — above bottom nav */}
@@ -7647,6 +7985,85 @@
                     Edit scores or delete entries. Records auto-recalculate.
                   </span>
                 </div>
+                {(() => {
+                  // Migration helper: bulk-convert legacy non-Pickleball matches to Pickleball.
+                  // Only renders when there's actually something to migrate, so it's invisible
+                  // to admins once the cleanup is done. No score/player changes — pure relabel.
+                  const legacy = matches.filter(
+                    (m) => m.sport && m.sport !== "Pickleball",
+                  );
+                  if (legacy.length === 0) return null;
+                  const runMigration = async () => {
+                    if (
+                      !window.confirm(
+                        `Convert ${legacy.length} legacy match${legacy.length === 1 ? "" : "es"} to Pickleball?\n\nScores and players are unchanged. This only updates the sport label so all matches show as Pickleball going forward.`,
+                      )
+                    )
+                      return;
+                    const nextMatches = matches.map((m) =>
+                      m.sport && m.sport !== "Pickleball"
+                        ? { ...m, sport: "Pickleball" }
+                        : m,
+                    );
+                    const next = { ...data, matches: nextMatches };
+                    setData(next);
+                    await pushUpdate(next);
+                    toast({
+                      type: "admin",
+                      icon: "✓",
+                      title: "Migration complete",
+                      msg: `${legacy.length} match${legacy.length === 1 ? "" : "es"} updated to Pickleball.`,
+                    });
+                  };
+                  return (
+                    <div
+                      style={{
+                        background: "rgba(200,255,0,0.05)",
+                        border: "1px solid rgba(200,255,0,0.25)",
+                        borderRadius: 4,
+                        padding: 10,
+                        marginBottom: 12,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 200 }}>
+                        <div
+                          style={{
+                            fontFamily: "Barlow Condensed,sans-serif",
+                            fontWeight: 700,
+                            fontSize: 12,
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase",
+                            color: "var(--neon)",
+                          }}
+                        >
+                          Legacy sport cleanup
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "var(--text3)",
+                            marginTop: 3,
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          Found {legacy.length} match
+                          {legacy.length === 1 ? "" : "es"} tagged as a non-Pickleball sport.
+                          Convert them all to Pickleball to unify your stats.
+                        </div>
+                      </div>
+                      <button
+                        onClick={runMigration}
+                        className="btn btn-primary btn-sm"
+                      >
+                        Convert all
+                      </button>
+                    </div>
+                  );
+                })()}
                 {[...matches]
                   .sort((a, b) => b.date.localeCompare(a.date))
                   .map((m) => (
@@ -7866,7 +8283,11 @@
                               fontFamily: "DM Mono,monospace",
                             }}
                           >
-                            · {b.time}
+                            · {typeof b.ts === "number"
+                              ? relTime(b.ts)
+                              : (typeof b.id === "number" && b.id > 1000000000000
+                                  ? relTime(b.id)
+                                  : (b.time || ""))}
                           </span>
                         </div>
                         <div
@@ -8005,8 +8426,33 @@
                     </div>
                   </div>
                 )}
-                {players.map((p) => (
-                  <div key={p.id} className="admin-row">
+                {players.map((p) => {
+                  const playerTitles = Array.isArray(p.titles) ? p.titles : [];
+                  const toggleTitle = async (titleId) => {
+                    const has = playerTitles.includes(titleId);
+                    const nextTitles = has
+                      ? playerTitles.filter((t) => t !== titleId)
+                      : [...playerTitles, titleId];
+                    const next = {
+                      ...data,
+                      players: players.map((pl) =>
+                        pl.id === p.id ? { ...pl, titles: nextTitles } : pl,
+                      ),
+                    };
+                    setData(next);
+                    await pushUpdate(next);
+                    const t = TITLES_BY_ID[titleId];
+                    toast({
+                      type: "admin",
+                      icon: has ? "✕" : t.icon,
+                      title: has
+                        ? `${t.label} removed`
+                        : `${t.label} assigned`,
+                      msg: p.name,
+                    });
+                  };
+                  return (
+                  <div key={p.id} className="admin-row" style={{ flexWrap: "wrap" }}>
                     <Av player={p} size={28} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div
@@ -8016,6 +8462,10 @@
                           fontSize: 13,
                           textTransform: "uppercase",
                           color: "var(--text)",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 5,
+                          flexWrap: "wrap",
                         }}
                       >
                         {p.name}{" "}
@@ -8029,6 +8479,7 @@
                             Admin
                           </span>
                         )}
+                        <PlayerTitles player={p} mini />
                       </div>
                       <div
                         style={{
@@ -8038,6 +8489,65 @@
                         }}
                       >
                         {p.handle} · {p.wins}W {p.losses}L
+                      </div>
+                      {/* Title toggle row — admin assigns/removes flair */}
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 4,
+                          marginTop: 5,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        {TITLES.map((t) => {
+                          const active = playerTitles.includes(t.id);
+                          return (
+                            <button
+                              key={t.id}
+                              onClick={() => toggleTitle(t.id)}
+                              title={
+                                active
+                                  ? `Remove "${t.label}" from ${p.name}`
+                                  : `Assign "${t.label}" to ${p.name}`
+                              }
+                              style={{
+                                fontFamily: "Barlow Condensed,sans-serif",
+                                fontSize: 9,
+                                fontWeight: 700,
+                                letterSpacing: "0.1em",
+                                textTransform: "uppercase",
+                                padding: "2px 7px",
+                                borderRadius: 2,
+                                cursor: "pointer",
+                                border: "1px solid",
+                                borderColor: active
+                                  ? (t.id === "nemesis"
+                                      ? "rgba(255,56,96,0.5)"
+                                      : t.id === "legend"
+                                        ? "rgba(255,184,0,0.5)"
+                                        : "rgba(180,110,255,0.5)")
+                                  : "var(--border2)",
+                                background: active
+                                  ? (t.id === "nemesis"
+                                      ? "rgba(255,56,96,0.14)"
+                                      : t.id === "legend"
+                                        ? "rgba(255,184,0,0.14)"
+                                        : "rgba(180,110,255,0.14)")
+                                  : "none",
+                                color: active
+                                  ? (t.id === "nemesis"
+                                      ? "#ff5577"
+                                      : t.id === "legend"
+                                        ? "#ffc94d"
+                                        : "#c89bff")
+                                  : "var(--text3)",
+                                transition: "all 0.15s",
+                              }}
+                            >
+                              {t.icon} {t.short}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                     <button
@@ -8088,7 +8598,8 @@
                       </button>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
