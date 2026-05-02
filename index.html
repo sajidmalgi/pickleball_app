@@ -6502,7 +6502,10 @@
               const showWorst =
                 worst && (!best || worst.pid !== best.pid);
               if (!best && !nem) return null;
-              const findP = (pid) => players.find((x) => x.id === pid);
+              // Object.entries() coerces numeric keys to strings, so we need a
+              // lookup that handles both. Compare via String() on both sides.
+              const findP = (pid) =>
+                players.find((x) => String(x.id) === String(pid));
               const Card = ({ kicker, color, label, sub, onClick }) => (
                 <div
                   onClick={onClick}
