@@ -6414,6 +6414,219 @@
               ))}
             </div>
 
+            {/* Synergy cards — Best Partner / Worst Partner / Nemesis.
+                Computed from match data only. Min 3 shared games to qualify
+                (avoids one-off small-sample noise like 1W-0L = 100%).
+                Renders nothing when no pairings meet the threshold. */}
+            {(() => {
+              const MIN_GAMES = 3;
+              // Build {oppId: {wins, losses}} for partner stats (same team, doubles only)
+              // and nemesis stats (opposite team, any format).
+              const partnerStats = {};
+              const nemesisStats = {};
+              for (const m of matches) {
+                const inT1 = m.team1.includes(player.id);
+                const inT2 = m.team2.includes(player.id);
+                if (!inT1 && !inT2) continue;
+                const myTeam = inT1 ? m.team1 : m.team2;
+                const oppTeam = inT1 ? m.team2 : m.team1;
+                const iWon = inT1
+                  ? m.score1 > m.score2
+                  : m.score2 > m.score1;
+                // Partners — only doubles count (1v1 has no partner)
+                if (myTeam.length > 1) {
+                  for (const pid of myTeam) {
+                    if (pid === player.id) continue;
+                    if (!partnerStats[pid])
+                      partnerStats[pid] = { wins: 0, losses: 0 };
+                    partnerStats[pid][iWon ? "wins" : "losses"] += 1;
+                  }
+                }
+                // Nemesis — anyone on the opposing team, regardless of format
+                for (const pid of oppTeam) {
+                  if (!nemesisStats[pid])
+                    nemesisStats[pid] = { wins: 0, losses: 0 };
+                  // From this player's perspective: their wins against opp count as my losses
+                  nemesisStats[pid][iWon ? "wins" : "losses"] += 1;
+                }
+              }
+              // Helpers — turn the maps into ranked lists with a min-games filter
+              const rankPartners = (preferLow) => {
+                const list = Object.entries(partnerStats)
+                  .map(([pid, s]) => {
+                    const total = s.wins + s.losses;
+                    return {
+                      pid,
+                      wins: s.wins,
+                      losses: s.losses,
+                      total,
+                      pct: total ? s.wins / total : 0,
+                    };
+                  })
+                  .filter((x) => x.total >= MIN_GAMES);
+                if (!list.length) return null;
+                list.sort((a, b) =>
+                  preferLow
+                    ? a.pct - b.pct || b.total - a.total
+                    : b.pct - a.pct || b.total - a.total,
+                );
+                return list[0];
+              };
+              const rankNemesis = () => {
+                const list = Object.entries(nemesisStats)
+                  .map(([pid, s]) => {
+                    const total = s.wins + s.losses;
+                    // From player's perspective: my wins are s.wins, my losses are s.losses
+                    return {
+                      pid,
+                      wins: s.wins,
+                      losses: s.losses,
+                      total,
+                      pct: total ? s.losses / total : 0, // loss rate vs them
+                    };
+                  })
+                  .filter((x) => x.total >= MIN_GAMES && x.losses > 0);
+                if (!list.length) return null;
+                // Sort by highest loss-rate against, break ties by total games
+                list.sort(
+                  (a, b) =>
+                    b.pct - a.pct || b.losses - a.losses || b.total - a.total,
+                );
+                return list[0];
+              };
+              const best = rankPartners(false);
+              const worst = rankPartners(true);
+              const nem = rankNemesis();
+              // Avoid showing the same player twice across Best/Worst when there's
+              // only one qualifying partner — show Best, hide Worst.
+              const showWorst =
+                worst && (!best || worst.pid !== best.pid);
+              if (!best && !nem) return null;
+              const findP = (pid) => players.find((x) => x.id === pid);
+              const Card = ({ kicker, color, label, sub, onClick }) => (
+                <div
+                  onClick={onClick}
+                  style={{
+                    flex: "1 1 160px",
+                    minWidth: 0,
+                    background: "var(--bg3)",
+                    border: "1px solid var(--border2)",
+                    borderRadius: 6,
+                    padding: "10px 12px",
+                    cursor: onClick ? "pointer" : "default",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (onClick)
+                      e.currentTarget.style.borderColor = color;
+                  }}
+                  onMouseLeave={(e) => {
+                    if (onClick)
+                      e.currentTarget.style.borderColor = "var(--border2)";
+                  }}
+                >
+                  <div
+                    style={{
+                      fontFamily: "DM Mono,monospace",
+                      fontSize: 9,
+                      letterSpacing: "0.12em",
+                      textTransform: "uppercase",
+                      color: color,
+                      marginBottom: 4,
+                    }}
+                  >
+                    {kicker}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "Barlow Condensed,sans-serif",
+                      fontWeight: 700,
+                      fontSize: 16,
+                      textTransform: "uppercase",
+                      color: "#f0f0f5",
+                      lineHeight: 1.1,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {label}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "DM Mono,monospace",
+                      fontSize: 10,
+                      color: "var(--text3)",
+                      marginTop: 3,
+                    }}
+                  >
+                    {sub}
+                  </div>
+                </div>
+              );
+              return (
+                <>
+                  <div
+                    className="sh"
+                    style={{ marginBottom: 8, marginTop: 14 }}
+                  >
+                    <h2>Synergy</h2>
+                    <div className="sh-line"></div>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      flexWrap: "wrap",
+                      marginBottom: 14,
+                    }}
+                  >
+                    {best && (() => {
+                      const p = findP(best.pid);
+                      if (!p) return null;
+                      const pct = Math.round(best.pct * 100);
+                      return (
+                        <Card
+                          kicker="🤝 Best Partner"
+                          color="#c8ff00"
+                          label={p.name}
+                          sub={`${best.wins}W–${best.losses}L · ${pct}% together`}
+                        />
+                      );
+                    })()}
+                    {showWorst && (() => {
+                      const p = findP(worst.pid);
+                      if (!p) return null;
+                      const pct = Math.round(worst.pct * 100);
+                      return (
+                        <Card
+                          kicker="💀 Worst Partner"
+                          color="#ff8a55"
+                          label={p.name}
+                          sub={`${worst.wins}W–${worst.losses}L · ${pct}% together`}
+                        />
+                      );
+                    })()}
+                    {nem && (() => {
+                      const p = findP(nem.pid);
+                      if (!p) return null;
+                      const myW = nem.wins;
+                      const myL = nem.losses;
+                      const lossPct = Math.round(nem.pct * 100);
+                      return (
+                        <Card
+                          kicker="🎯 Nemesis"
+                          color="#ff5577"
+                          label={p.name}
+                          sub={`${myW}W–${myL}L vs · ${lossPct}% loss rate`}
+                        />
+                      );
+                    })()}
+                  </div>
+                </>
+              );
+            })()}
+
             {/* Head-to-Head */}
             {(() => {
               const opponents = players.filter((p) => p.id !== player.id);
