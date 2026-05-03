@@ -1040,6 +1040,76 @@
       .spot-icon-btn:hover { color: var(--neon); border-color: var(--neon); }
       .spot-icon-btn.del:hover { color: var(--loss); border-color: var(--loss); }
 
+      /* ───── Roster v2 ───── */
+      .roster-row {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 12px 9px 8px;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+        transition: border-color 0.15s, transform 0.15s;
+      }
+      .roster-row:hover {
+        border-color: var(--neon);
+        transform: translateY(-1px);
+      }
+      .roster-row.dormant { opacity: 0.45; }
+      .roster-row.dormant:hover { opacity: 0.7; }
+      .roster-rank {
+        font-family: "Barlow Condensed", sans-serif;
+        font-weight: 900;
+        font-size: 22px;
+        line-height: 1;
+        width: 26px;
+        text-align: center;
+        flex-shrink: 0;
+        color: var(--bg4);
+      }
+      .roster-rank.r1 { color: var(--neon); }
+      .roster-rank.r2 { color: rgba(200, 255, 0, 0.55); }
+      .roster-rank.r3 { color: var(--gold); }
+      .roster-rank.rN { font-size: 16px; }
+      .stat-pill {
+        display: flex;
+        align-items: stretch;
+        flex-shrink: 0;
+        border: 1px solid var(--border2);
+        border-radius: 4px;
+        overflow: hidden;
+      }
+      .stat-cell {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 5px 8px;
+        border-right: 1px solid var(--border2);
+        min-width: 36px;
+      }
+      .stat-cell:last-child { border-right: none; }
+      .stat-cell-val {
+        font-family: "Barlow Condensed", sans-serif;
+        font-weight: 700;
+        font-size: 14px;
+        line-height: 1;
+        color: var(--text);
+      }
+      .stat-cell-val.win { color: var(--neon); }
+      .stat-cell-val.loss { color: var(--loss); }
+      .stat-cell-lbl {
+        font-family: "DM Mono", monospace;
+        font-size: 7px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--text3);
+        margin-top: 2px;
+      }
+
       .fc {
         background: var(--surface);
         border: 1px solid var(--border);
@@ -4632,11 +4702,25 @@
         pushUpdate,
         onRefresh,
       }) {
-        const { players } = data;
+        const { players, matches } = data;
         const [showAdd, setShowAdd] = useState(false);
         const [search, setSearch] = useState("");
 
-        const filtered = [...players]
+        // matchCount per player — used to flag dormant ("never played") rows.
+        // We count any appearance, win or loss; dormant = 0 matches ever.
+        const matchCount = React.useMemo(() => {
+          const counts = {};
+          (matches || []).forEach((m) => {
+            [...m.team1, ...m.team2].forEach((pid) => {
+              counts[pid] = (counts[pid] || 0) + 1;
+            });
+          });
+          return counts;
+        }, [matches]);
+
+        // Active players ranked by wins desc; dormant players land at the bottom
+        // alphabetically so the leaderboard ordering at top stays meaningful.
+        const sorted = [...players]
           .filter(
             (p) =>
               !search.trim() ||
@@ -4644,7 +4728,21 @@
               (p.handle || "").toLowerCase().includes(search.toLowerCase()) ||
               (p.bio || "").toLowerCase().includes(search.toLowerCase()),
           )
-          .sort((a, b) => b.wins - a.wins || winPct(b) - winPct(a));
+          .sort((a, b) => {
+            const aDormant = !matchCount[a.id];
+            const bDormant = !matchCount[b.id];
+            if (aDormant !== bDormant) return aDormant ? 1 : -1;
+            if (aDormant && bDormant) return a.name.localeCompare(b.name);
+            return b.wins - a.wins || winPct(b) - winPct(a);
+          });
+
+        // Rank numerals only count active players — dormant rows get no rank
+        let activeIdx = 0;
+        const filtered = sorted.map((p) => {
+          const dormant = !matchCount[p.id];
+          const rank = dormant ? null : ++activeIdx;
+          return { player: p, rank, dormant };
+        });
 
         const addPlayer = (p) => {
           const next = { ...data, players: [...data.players, p] };
@@ -4766,13 +4864,15 @@
                   gap: 10,
                 }}
               >
-                {filtered.map((p) => (
+                {filtered.map(({ player, rank, dormant }) => (
                   <PlayerCard
-                    key={p.id}
-                    player={p}
+                    key={player.id}
+                    player={player}
+                    rank={rank}
+                    dormant={dormant}
                     currentUser={currentUser}
                     onClick={() => {
-                      setViewPlayer(p.id);
+                      setViewPlayer(player.id);
                       setPage("profile");
                     }}
                   />
@@ -4790,44 +4890,23 @@
         );
       }
 
-      function PlayerCard({ player, onClick, currentUser }) {
-        const hot = player.streak > 2;
-        const cold = player.streak < -2;
+      function PlayerCard({ player, onClick, currentUser, rank, dormant }) {
         const isAdmin = ADMIN_NAMES.some((n) =>
           player.name.toLowerCase().startsWith(n.toLowerCase()),
         );
+        const rankCls = rank === 1 ? "r1" : rank === 2 ? "r2" : rank === 3 ? "r3" : "rN";
+        const streakVal = streak(player.streak);
+        const streakCls =
+          player.streak > 0 ? "win" : player.streak < 0 ? "loss" : "";
         return (
           <div
-            className="pc"
+            className={"roster-row" + (dormant ? " dormant" : "")}
             onClick={onClick}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "9px 12px",
-              cursor: "pointer",
-              position: "relative",
-              overflow: "hidden",
-            }}
           >
-            {/* left accent bar */}
-            <div
-              style={{
-                position: "absolute",
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: 3,
-                background: hot
-                  ? "#c8ff00"
-                  : cold
-                    ? "rgba(255,77,106,0.7)"
-                    : "rgba(255,255,255,0.06)",
-              }}
-            ></div>
-            <div style={{ paddingLeft: 4, flexShrink: 0 }}>
-              <Av player={player} size={36} />
+            <div className={"roster-rank " + rankCls}>
+              {rank ? rank : "—"}
             </div>
+            <Av player={player} size={36} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
                 style={{
@@ -4914,93 +4993,20 @@
                 </div>
               )}
             </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                flexShrink: 0,
-                alignItems: "center",
-              }}
-            >
-              <div style={{ textAlign: "center" }}>
-                <div
-                  style={{
-                    fontFamily: "Barlow Condensed,sans-serif",
-                    fontWeight: 700,
-                    fontSize: 16,
-                    color: "#c8ff00",
-                    lineHeight: 1,
-                  }}
-                >
-                  {player.wins}
-                </div>
-                <div
-                  style={{
-                    fontFamily: "DM Mono,monospace",
-                    fontSize: 7,
-                    color: "#5a5a6e",
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                    marginTop: 1,
-                  }}
-                >
-                  W
-                </div>
+            <div className="stat-pill">
+              <div className="stat-cell">
+                <span className="stat-cell-val win">{player.wins}</span>
+                <span className="stat-cell-lbl">W</span>
               </div>
-              <div style={{ textAlign: "center" }}>
-                <div
-                  style={{
-                    fontFamily: "Barlow Condensed,sans-serif",
-                    fontWeight: 700,
-                    fontSize: 16,
-                    color: "var(--text2)",
-                    lineHeight: 1,
-                  }}
-                >
-                  {winPct(player)}%
-                </div>
-                <div
-                  style={{
-                    fontFamily: "DM Mono,monospace",
-                    fontSize: 7,
-                    color: "#5a5a6e",
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                    marginTop: 1,
-                  }}
-                >
-                  Pct
-                </div>
+              <div className="stat-cell">
+                <span className="stat-cell-val">{winPct(player)}%</span>
+                <span className="stat-cell-lbl">Pct</span>
               </div>
-              <div style={{ textAlign: "center", minWidth: 26 }}>
-                <div
-                  style={{
-                    fontFamily: "Barlow Condensed,sans-serif",
-                    fontWeight: 700,
-                    fontSize: 16,
-                    color:
-                      player.streak > 0
-                        ? "#c8ff00"
-                        : player.streak < 0
-                          ? "#ff4d6a"
-                          : "#5a5a6e",
-                    lineHeight: 1,
-                  }}
-                >
-                  {streak(player.streak)}
-                </div>
-                <div
-                  style={{
-                    fontFamily: "DM Mono,monospace",
-                    fontSize: 7,
-                    color: "#5a5a6e",
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                    marginTop: 1,
-                  }}
-                >
-                  Str
-                </div>
+              <div className="stat-cell">
+                <span className={"stat-cell-val " + streakCls}>
+                  {streakVal}
+                </span>
+                <span className="stat-cell-lbl">Str</span>
               </div>
             </div>
           </div>
