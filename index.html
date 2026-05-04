@@ -5254,16 +5254,20 @@
             </div>
             <div className="stat-pill">
               <div className="stat-cell">
-                <span className="stat-cell-val win">{player.wins}</span>
+                <span className="stat-cell-val win">
+                  {dormant ? "—" : player.wins}
+                </span>
                 <span className="stat-cell-lbl">W</span>
               </div>
               <div className="stat-cell">
-                <span className="stat-cell-val">{winPct(player)}%</span>
+                <span className="stat-cell-val">
+                  {dormant ? "—" : winPct(player) + "%"}
+                </span>
                 <span className="stat-cell-lbl">Pct</span>
               </div>
               <div className="stat-cell">
                 <span className={"stat-cell-val " + streakCls}>
-                  {streakVal}
+                  {dormant ? "—" : streakVal}
                 </span>
                 <span className="stat-cell-lbl">Str</span>
               </div>
