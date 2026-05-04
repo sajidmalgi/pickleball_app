@@ -1272,6 +1272,103 @@
         border-color: var(--loss);
       }
 
+      /* ───── Dispatch reactions v2 ───── */
+      .rxn-row {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-wrap: wrap;
+      }
+      .rxn-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-family: "DM Mono", monospace;
+        font-size: 11px;
+        padding: 3px 9px;
+        border-radius: 3px;
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        color: var(--text2);
+        cursor: pointer;
+        transition: all 0.12s;
+      }
+      .rxn-chip:hover {
+        border-color: var(--border2);
+      }
+      .rxn-chip.active {
+        border-color: var(--neon);
+        color: var(--neon);
+        background: rgba(200, 255, 0, 0.08);
+      }
+      .rxn-chip-count {
+        font-size: 10px;
+      }
+      .rxn-add {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 3px;
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        color: var(--text3);
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+        padding: 0;
+        flex-shrink: 0;
+        transition: all 0.12s;
+      }
+      .rxn-add:hover {
+        color: var(--neon);
+        border-color: var(--neon);
+      }
+      .rxn-add.open {
+        color: var(--neon);
+        border-color: var(--neon);
+        background: rgba(200, 255, 0, 0.08);
+      }
+      .rxn-picker {
+        display: flex;
+        gap: 4px;
+        margin-top: 6px;
+        padding: 5px;
+        background: var(--bg3);
+        border: 1px solid var(--border2);
+        border-radius: 4px;
+        flex-wrap: wrap;
+        animation: rxn-picker-in 0.12s ease;
+      }
+      @keyframes rxn-picker-in {
+        from { opacity: 0; transform: translateY(-2px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .rxn-picker-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 3px;
+        background: var(--surface);
+        border: 1px solid transparent;
+        cursor: pointer;
+        font-size: 16px;
+        line-height: 1;
+        padding: 0;
+        transition: all 0.12s;
+      }
+      .rxn-picker-btn:hover {
+        border-color: var(--neon);
+        background: rgba(200, 255, 0, 0.08);
+      }
+      .rxn-picker-btn.reacted {
+        border-color: var(--neon);
+        background: rgba(200, 255, 0, 0.1);
+      }
+
       .fc {
         background: var(--surface);
         border: 1px solid var(--border);
@@ -7859,6 +7956,8 @@
         );
         const [showCompose, setShowCompose] = useState(false);
         const [showAllPosts, setShowAllPosts] = useState(false);
+        // Which post id has the "+" picker open right now (only one at a time)
+        const [pickerOpen, setPickerOpen] = useState(null);
         const listRef = useRef(null);
         useEffect(() => {
           setRxns(banter.reduce((a, b) => ({ ...a, [b.id]: b.reactions }), {}));
@@ -8038,33 +8137,61 @@
                         <span className="bp-time">{timeLabel}</span>
                       </div>
                       <div className="bp-text">{b.text}</div>
-                      <div
-                        className="bp-rxns"
-                        style={{ flexWrap: "wrap", gap: 5 }}
-                      >
+                      <div className="rxn-row">
                         {ALL_REACTIONS.map(([k, e]) => {
                           const reacted = hasReacted(b.id, k);
+                          const count = r[k] || 0;
+                          // Hide chip when nobody has reacted with this emoji.
+                          // Defensive: also show if *I* reacted (atomic counter
+                          // could in theory show 0 mid-flight)
+                          if (count === 0 && !reacted) return null;
                           return (
                             <button
                               key={k}
-                              className="bp-btn"
+                              type="button"
+                              className={"rxn-chip" + (reacted ? " active" : "")}
                               onClick={() => react(b.id, k)}
-                              style={{
-                                opacity: r[k] ? 1 : 0.4,
-                                transition: "all 0.15s",
-                                borderColor: reacted ? "var(--neon)" : undefined,
-                                color: reacted ? "var(--neon)" : undefined,
-                                background: reacted
-                                  ? "rgba(200,255,0,0.08)"
-                                  : undefined,
-                              }}
                               title={reacted ? "Tap to remove" : "React"}
                             >
-                              {e} {r[k] || 0}
+                              <span>{e}</span>
+                              <span className="rxn-chip-count">{count}</span>
                             </button>
                           );
                         })}
+                        <button
+                          type="button"
+                          className={"rxn-add" + (pickerOpen === b.id ? " open" : "")}
+                          title="Add reaction"
+                          onClick={() =>
+                            setPickerOpen(pickerOpen === b.id ? null : b.id)
+                          }
+                        >
+                          {pickerOpen === b.id ? "×" : "+"}
+                        </button>
                       </div>
+                      {pickerOpen === b.id && (
+                        <div className="rxn-picker">
+                          {ALL_REACTIONS.map(([k, e]) => {
+                            const reacted = hasReacted(b.id, k);
+                            return (
+                              <button
+                                key={k}
+                                type="button"
+                                className={
+                                  "rxn-picker-btn" + (reacted ? " reacted" : "")
+                                }
+                                title={reacted ? "Remove reaction" : "React"}
+                                onClick={() => {
+                                  react(b.id, k);
+                                  setPickerOpen(null);
+                                }}
+                              >
+                                {e}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 });
