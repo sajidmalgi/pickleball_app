@@ -2092,6 +2092,66 @@
           ? 0
           : Math.round((p.wins / (p.wins + p.losses)) * 100);
       const streak = (s) => (s > 0 ? `W${s}` : s < 0 ? `L${Math.abs(s)}` : "—");
+
+      // ─── CREW RATING (curiosity stat) ─────────────────────────────────────
+      // Margin-weighted Elo, calibrated to look DUPR-ish. Stored on the player
+      // doc as `rating`, `ratingDelta`, `ratingMatches`. Range settles around
+      // 3.0–4.0 for a small crew. Players are "Provisional" until 5 matches.
+      const RATING_BASE = 3.5;       // Everyone starts here
+      const RATING_K = 0.04;         // How much one match can move you
+      const RATING_PROV_MIN = 5;     // Matches needed to leave provisional
+      const getRating = (p) =>
+        typeof p?.rating === "number" ? p.rating : RATING_BASE;
+      const getRatingMatches = (p) =>
+        typeof p?.ratingMatches === "number" ? p.ratingMatches : 0;
+      const isProvisional = (p) => getRatingMatches(p) < RATING_PROV_MIN;
+      // Apply one match's rating update to the players array. Returns a NEW
+      // players array with rating/ratingDelta/ratingMatches updated for the
+      // four-or-fewer participants. No-ops for players not in the match.
+      const applyRatingUpdate = (players, m) => {
+        if (!m || !m.team1?.length || !m.team2?.length) return players;
+        const playersById = new Map(players.map((p) => [p.id, p]));
+        const t1 = m.team1.map((id) => playersById.get(id)).filter(Boolean);
+        const t2 = m.team2.map((id) => playersById.get(id)).filter(Boolean);
+        if (!t1.length || !t2.length) return players;
+        // Team rating = avg of partner ratings
+        const r1 = t1.reduce((s, p) => s + getRating(p), 0) / t1.length;
+        const r2 = t2.reduce((s, p) => s + getRating(p), 0) / t2.length;
+        // Expected scores via classic Elo (using DUPR-ish 0.4 sensitivity)
+        const exp1 = 1 / (1 + Math.pow(10, (r2 - r1) / 0.4));
+        const exp2 = 1 - exp1;
+        // Actual outcome — 1/0 for win/loss
+        const won1 = m.score1 > m.score2;
+        const act1 = won1 ? 1 : 0;
+        const act2 = 1 - act1;
+        // Margin multiplier — wider margins move the rating more
+        // 11–0 = 1.5x, 11–9 = 1.0x. Capped to keep things tame.
+        const totalScore = Math.max(1, m.score1 + m.score2);
+        const margin = Math.abs(m.score1 - m.score2) / totalScore;
+        const mult = 1 + Math.min(0.5, margin);
+        const delta1 = RATING_K * mult * (act1 - exp1);
+        const delta2 = RATING_K * mult * (act2 - exp2);
+        const round3 = (n) => Math.round(n * 1000) / 1000;
+        return players.map((p) => {
+          if (m.team1.includes(p.id)) {
+            return {
+              ...p,
+              rating: round3(getRating(p) + delta1),
+              ratingDelta: round3(delta1),
+              ratingMatches: getRatingMatches(p) + 1,
+            };
+          }
+          if (m.team2.includes(p.id)) {
+            return {
+              ...p,
+              rating: round3(getRating(p) + delta2),
+              ratingDelta: round3(delta2),
+              ratingMatches: getRatingMatches(p) + 1,
+            };
+          }
+          return p;
+        });
+      };
       const today = () => new Date().toISOString().split("T")[0];
       const fmtDate = (d) => {
         if (!d) return "";
@@ -5397,7 +5457,7 @@
             .join(" & ");
 
         const logMatch = async (m) => {
-          const nextPlayers = players.map((p) => {
+          const playersAfterWL = players.map((p) => {
             const inT1 = m.team1.includes(p.id),
               inT2 = m.team2.includes(p.id);
             if (!inT1 && !inT2) return p;
@@ -5416,6 +5476,7 @@
                   : -1,
             };
           });
+          const nextPlayers = applyRatingUpdate(playersAfterWL, m);
           const next = {
             ...data,
             matches: [m, ...matches],
@@ -6691,6 +6752,97 @@
                 )}
               </div>
             </div>
+
+            {(() => {
+              // Crew Rating — curiosity stat. DUPR-ish margin-weighted Elo.
+              // Provisional badge for first 5 matches so a single lucky win
+              // doesn't make a new player look like a god.
+              const rating = getRating(player);
+              const delta = typeof player?.ratingDelta === "number"
+                ? player.ratingDelta
+                : 0;
+              const matchesPlayed = getRatingMatches(player);
+              const provisional = isProvisional(player);
+              const fmtRating = (r) => r.toFixed(2);
+              const fmtDelta = (d) => {
+                if (d === 0) return null;
+                const sign = d > 0 ? "↑" : "↓";
+                return `${sign} ${Math.abs(d).toFixed(2)} last match`;
+              };
+              const deltaText = fmtDelta(delta);
+              return (
+                <div
+                  style={{
+                    background:
+                      "linear-gradient(135deg,var(--bg3) 0%,var(--bg2) 100%)",
+                    border: "1px solid var(--border2)",
+                    borderRadius: 8,
+                    padding: "14px 16px",
+                    marginBottom: 10,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 14,
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{
+                        fontFamily: "DM Mono,monospace",
+                        fontSize: 9,
+                        letterSpacing: "0.18em",
+                        textTransform: "uppercase",
+                        color: "var(--neon)",
+                        marginBottom: 4,
+                      }}
+                    >
+                      Crew Rating
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "var(--text3)",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {provisional
+                        ? `Provisional · ${matchesPlayed}/${RATING_PROV_MIN} matches`
+                        : "DUPR-style margin-weighted rating · curiosity stat"}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div
+                      style={{
+                        fontFamily: "Barlow Condensed,sans-serif",
+                        fontWeight: 900,
+                        fontSize: 32,
+                        lineHeight: 1,
+                        color: provisional
+                          ? "rgba(200,255,0,0.4)"
+                          : "var(--neon)",
+                      }}
+                    >
+                      {provisional && matchesPlayed === 0
+                        ? "—"
+                        : fmtRating(rating)}
+                    </div>
+                    {deltaText && !provisional && (
+                      <div
+                        style={{
+                          fontFamily: "DM Mono,monospace",
+                          fontSize: 9,
+                          color:
+                            delta > 0 ? "var(--neon)" : "var(--loss)",
+                          marginTop: 4,
+                          letterSpacing: "0.06em",
+                        }}
+                      >
+                        {deltaText}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="p-stats">
               {[
@@ -8382,38 +8534,48 @@
 
         // ── Recalculate all player W/L/streak from match history ──
         const recalcFromMatches = (allMatches, allPlayers) => {
-          const stats = {};
-          allPlayers.forEach((p) => {
-            stats[p.id] = { wins: 0, losses: 0, streak: 0, lastResult: null };
-          });
-          [...allMatches]
-            .sort((a, b) => a.date.localeCompare(b.date))
-            .forEach((m) => {
-              [...m.team1, ...m.team2].forEach((pid) => {
-                if (!stats[pid]) return;
-                const inT1 = m.team1.includes(pid);
-                const won =
-                  (inT1 && m.score1 > m.score2) ||
-                  (!inT1 && m.score2 > m.score1);
-                if (won) {
-                  stats[pid].wins++;
-                  stats[pid].streak =
-                    stats[pid].streak >= 0 ? stats[pid].streak + 1 : 1;
-                } else {
-                  stats[pid].losses++;
-                  stats[pid].streak =
-                    stats[pid].streak <= 0 ? stats[pid].streak - 1 : -1;
-                }
-              });
-            });
-          return allPlayers.map((p) => ({
+          // Reset everyone to base rating + zero W/L/streak before replaying
+          // history. Rating evolves match-by-match in chronological order so
+          // each match's expected outcome reflects the state of the world at
+          // the time it was played (within date precision).
+          let working = allPlayers.map((p) => ({
             ...p,
-            ...{
-              wins: stats[p.id]?.wins ?? p.wins,
-              losses: stats[p.id]?.losses ?? p.losses,
-              streak: stats[p.id]?.streak ?? p.streak,
-            },
+            wins: 0,
+            losses: 0,
+            streak: 0,
+            rating: RATING_BASE,
+            ratingDelta: 0,
+            ratingMatches: 0,
           }));
+          const sortedMatches = [...allMatches].sort((a, b) =>
+            a.date.localeCompare(b.date),
+          );
+          for (const m of sortedMatches) {
+            // W/L/streak update for this match
+            working = working.map((p) => {
+              const inT1 = m.team1.includes(p.id),
+                inT2 = m.team2.includes(p.id);
+              if (!inT1 && !inT2) return p;
+              const won =
+                (inT1 && m.score1 > m.score2) ||
+                (inT2 && m.score2 > m.score1);
+              return {
+                ...p,
+                wins: p.wins + (won ? 1 : 0),
+                losses: p.losses + (!won ? 1 : 0),
+                streak: won
+                  ? p.streak >= 0
+                    ? p.streak + 1
+                    : 1
+                  : p.streak <= 0
+                    ? p.streak - 1
+                    : -1,
+              };
+            });
+            // Then rating update
+            working = applyRatingUpdate(working, m);
+          }
+          return working;
         };
 
         const deleteMatch = async (id) => {
@@ -8582,6 +8744,81 @@
                     Edit scores or delete entries. Records auto-recalculate.
                   </span>
                 </div>
+                {(() => {
+                  // Rating backfill: shown only until every player has a rating.
+                  // One-time cleanup for the v2 Crew Rating rollout — runs the
+                  // standard recalcFromMatches helper, which already replays
+                  // history chronologically applying ratings.
+                  const needsBackfill = players.some(
+                    (p) => typeof p.rating !== "number",
+                  );
+                  if (!needsBackfill) return null;
+                  const runBackfill = async () => {
+                    if (
+                      !window.confirm(
+                        "Recalculate Crew Ratings for everyone from match history?\n\nThis is safe to run anytime. Wins/losses are unchanged.",
+                      )
+                    )
+                      return;
+                    const nextPlayers = recalcFromMatches(matches, players);
+                    const next = { ...data, players: nextPlayers };
+                    setData(next);
+                    await pushUpdate(next);
+                    toast({
+                      type: "admin",
+                      icon: "✓",
+                      title: "Ratings backfilled",
+                      msg: `${nextPlayers.length} players updated.`,
+                    });
+                  };
+                  return (
+                    <div
+                      style={{
+                        background: "rgba(200,255,0,0.05)",
+                        border: "1px solid rgba(200,255,0,0.25)",
+                        borderRadius: 4,
+                        padding: 10,
+                        marginBottom: 12,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 200 }}>
+                        <div
+                          style={{
+                            fontFamily: "Barlow Condensed,sans-serif",
+                            fontWeight: 700,
+                            fontSize: 12,
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase",
+                            color: "var(--neon)",
+                          }}
+                        >
+                          Crew Rating backfill
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "var(--text3)",
+                            marginTop: 3,
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          One-time setup for the new rating system. Replays
+                          match history to seed each player's rating.
+                        </div>
+                      </div>
+                      <button
+                        onClick={runBackfill}
+                        className="btn btn-primary btn-sm"
+                      >
+                        Run backfill
+                      </button>
+                    </div>
+                  );
+                })()}
                 {(() => {
                   // Migration helper: bulk-convert legacy non-Pickleball matches to Pickleball.
                   // Only renders when there's actually something to migrate, so it's invisible
