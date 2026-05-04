@@ -9946,6 +9946,24 @@
           .filter((s) => s.date >= today())
           .sort((a, b) => a.date.localeCompare(b.date))
           .slice(0, 3);
+        // Auto-purge sessions older than 14 days. Runs once per page lifetime
+        // — first device to open after expiry does the cleanup, onSnapshot
+        // propagates the delete to everyone else. Silent: no toast, no UI.
+        const purgedRef = useRef(false);
+        useEffect(() => {
+          if (purgedRef.current) return;
+          if (!allSessions.length) return;
+          const cutoff = new Date();
+          cutoff.setDate(cutoff.getDate() - 14);
+          const cutoffStr = cutoff.toISOString().split("T")[0];
+          const stale = allSessions.filter((s) => s.date < cutoffStr);
+          if (!stale.length) return;
+          purgedRef.current = true;
+          const fresh = allSessions.filter((s) => s.date >= cutoffStr);
+          const next = { ...data, sessions: fresh };
+          setData(next);
+          pushUpdate(next); // no toast — silent cleanup
+        }, [allSessions]);
         const [showAdd, setShowAdd] = useState(false);
         const [form, setForm] = useState({
           date: "",
