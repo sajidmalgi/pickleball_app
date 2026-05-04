@@ -2021,7 +2021,7 @@
       // Change this to something only you and Abby know
       const ADMIN_PIN = "0000";
 
-      const SPORTS = ["Pickleball"];
+      const SPORTS = ["Pickleball", "Badminton"];
       const SPORT_ICONS = {
         Pickleball: "PCK",
         // Legacy sport icons retained so old match history still displays correctly
@@ -2108,8 +2108,11 @@
       // Apply one match's rating update to the players array. Returns a NEW
       // players array with rating/ratingDelta/ratingMatches updated for the
       // four-or-fewer participants. No-ops for players not in the match.
+      // Crew Rating is pickleball-only — DUPR is a pickleball thing, and
+      // mixing badminton matches into the same rating muddies the meaning.
       const applyRatingUpdate = (players, m) => {
         if (!m || !m.team1?.length || !m.team2?.length) return players;
+        if (m.sport !== "Pickleball") return players;
         const playersById = new Map(players.map((p) => [p.id, p]));
         const t1 = m.team1.map((id) => playersById.get(id)).filter(Boolean);
         const t2 = m.team2.map((id) => playersById.get(id)).filter(Boolean);
@@ -3311,7 +3314,7 @@
           .join("   ·   ");
         const me = players.find((p) => p.id === currentUser);
         const navItems = [
-          { id: "scoreboard", label: "Scores" },
+          { id: "scoreboard", label: "Home" },
           { id: "results", label: "Results" },
           { id: "venues", label: "Spots" },
           { id: "dispatch", label: "Chat" },
@@ -5083,12 +5086,12 @@
             return b.wins - a.wins || winPct(b) - winPct(a);
           });
 
-        // Rank numerals only count active players — dormant rows get no rank
-        let activeIdx = 0;
+        // Rank numerals not used in v2 Roster (Home owns the leaderboard
+        // identity), but `dormant` still drives sort order + dim treatment
         const filtered = sorted.map((p) => {
-          const dormant = !matchCount[p.id];
-          const rank = dormant ? null : ++activeIdx;
-          return { player: p, rank, dormant };
+          const count = matchCount[p.id] || 0;
+          const dormant = count === 0;
+          return { player: p, dormant, matches: count };
         });
 
         const addPlayer = (p) => {
@@ -5211,12 +5214,12 @@
                   gap: 10,
                 }}
               >
-                {filtered.map(({ player, rank, dormant }) => (
+                {filtered.map(({ player, dormant, matches: matchesPlayed }) => (
                   <PlayerCard
                     key={player.id}
                     player={player}
-                    rank={rank}
                     dormant={dormant}
+                    matchesPlayed={matchesPlayed}
                     currentUser={currentUser}
                     onClick={() => {
                       setViewPlayer(player.id);
@@ -5237,23 +5240,19 @@
         );
       }
 
-      function PlayerCard({ player, onClick, currentUser, rank, dormant }) {
+      function PlayerCard({ player, onClick, currentUser, dormant, matchesPlayed }) {
         const isAdmin = ADMIN_NAMES.some((n) =>
           player.name.toLowerCase().startsWith(n.toLowerCase()),
         );
-        const rankCls = rank === 1 ? "r1" : rank === 2 ? "r2" : rank === 3 ? "r3" : "rN";
-        const streakVal = streak(player.streak);
-        const streakCls =
-          player.streak > 0 ? "win" : player.streak < 0 ? "loss" : "";
+        // Pull just the flag emoji off the nationality string (e.g. "🇨🇦 Canadian" → "🇨🇦")
+        const flag = (player.nationality || "").trim().split(" ")[0] || "";
         return (
           <div
             className={"roster-row" + (dormant ? " dormant" : "")}
             onClick={onClick}
+            style={{ paddingLeft: 12 }}
           >
-            <div className={"roster-rank " + rankCls}>
-              {rank ? rank : "—"}
-            </div>
-            <Av player={player} size={36} />
+            <Av player={player} size={42} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
                 style={{
@@ -5267,7 +5266,7 @@
                   style={{
                     fontFamily: "Barlow Condensed,sans-serif",
                     fontWeight: 700,
-                    fontSize: 15,
+                    fontSize: 16,
                     textTransform: "uppercase",
                     color: "#f0f0f5",
                     lineHeight: 1,
@@ -5278,11 +5277,19 @@
                 >
                   {player.name}
                 </span>
+                {flag && (
+                  <span
+                    title={player.nationality}
+                    style={{ fontSize: 13, lineHeight: 1 }}
+                  >
+                    {flag}
+                  </span>
+                )}
                 {player.signed && (
                   <span
                     title="Signed the Code"
                     style={{
-                      fontSize: 10,
+                      fontSize: 11,
                       color: "var(--neon)",
                       lineHeight: 1,
                     }}
@@ -5293,7 +5300,7 @@
                 {player.id === currentUser && (
                   <span
                     className="chip chip-neon"
-                    style={{ fontSize: "7px", padding: "1px 5px" }}
+                    style={{ fontSize: "8px", padding: "1px 5px" }}
                   >
                     You
                   </span>
@@ -5302,7 +5309,7 @@
                   <span
                     style={{
                       fontFamily: "DM Mono,monospace",
-                      fontSize: "7px",
+                      fontSize: "8px",
                       letterSpacing: "0.08em",
                       color: "var(--gold)",
                       textTransform: "uppercase",
@@ -5316,10 +5323,10 @@
               {player.bio ? (
                 <div
                   style={{
-                    fontSize: 11,
-                    color: "#5a5a6e",
+                    fontSize: 12,
+                    color: "var(--text2)",
                     fontStyle: "italic",
-                    marginTop: 2,
+                    marginTop: 3,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
@@ -5330,34 +5337,38 @@
               ) : (
                 <div
                   style={{
-                    fontSize: 11,
-                    color: "#2e2e3e",
+                    fontSize: 12,
+                    color: "var(--text3)",
                     fontStyle: "italic",
-                    marginTop: 2,
+                    marginTop: 3,
+                    opacity: 0.5,
                   }}
                 >
                   No bio yet.
                 </div>
               )}
-            </div>
-            <div className="stat-pill">
-              <div className="stat-cell">
-                <span className="stat-cell-val win">
-                  {dormant ? "—" : player.wins}
-                </span>
-                <span className="stat-cell-lbl">W</span>
-              </div>
-              <div className="stat-cell">
-                <span className="stat-cell-val">
-                  {dormant ? "—" : winPct(player) + "%"}
-                </span>
-                <span className="stat-cell-lbl">Pct</span>
-              </div>
-              <div className="stat-cell">
-                <span className={"stat-cell-val " + streakCls}>
-                  {dormant ? "—" : streakVal}
-                </span>
-                <span className="stat-cell-lbl">Str</span>
+              <div
+                style={{
+                  fontFamily: "DM Mono,monospace",
+                  fontSize: 9,
+                  color: "var(--text3)",
+                  marginTop: 5,
+                  letterSpacing: "0.06em",
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <span>{player.handle || ""}</span>
+                {player.handle && matchesPlayed > 0 && (
+                  <span style={{ color: "var(--bg4)" }}>·</span>
+                )}
+                {matchesPlayed > 0 && (
+                  <span>
+                    {matchesPlayed} match{matchesPlayed === 1 ? "" : "es"}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -8848,85 +8859,6 @@
                   );
                 })()}
                 {(() => {
-                  // Migration helper: bulk-convert legacy non-Pickleball matches to Pickleball.
-                  // Only renders when there's actually something to migrate, so it's invisible
-                  // to admins once the cleanup is done. No score/player changes — pure relabel.
-                  const legacy = matches.filter(
-                    (m) => m.sport && m.sport !== "Pickleball",
-                  );
-                  if (legacy.length === 0) return null;
-                  const runMigration = async () => {
-                    if (
-                      !window.confirm(
-                        `Convert ${legacy.length} legacy match${legacy.length === 1 ? "" : "es"} to Pickleball?\n\nScores and players are unchanged. This only updates the sport label so all matches show as Pickleball going forward.`,
-                      )
-                    )
-                      return;
-                    const nextMatches = matches.map((m) =>
-                      m.sport && m.sport !== "Pickleball"
-                        ? { ...m, sport: "Pickleball" }
-                        : m,
-                    );
-                    const next = { ...data, matches: nextMatches };
-                    setData(next);
-                    await pushUpdate(next);
-                    toast({
-                      type: "admin",
-                      icon: "✓",
-                      title: "Migration complete",
-                      msg: `${legacy.length} match${legacy.length === 1 ? "" : "es"} updated to Pickleball.`,
-                    });
-                  };
-                  return (
-                    <div
-                      style={{
-                        background: "rgba(200,255,0,0.05)",
-                        border: "1px solid rgba(200,255,0,0.25)",
-                        borderRadius: 4,
-                        padding: 10,
-                        marginBottom: 12,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <div style={{ flex: 1, minWidth: 200 }}>
-                        <div
-                          style={{
-                            fontFamily: "Barlow Condensed,sans-serif",
-                            fontWeight: 700,
-                            fontSize: 12,
-                            letterSpacing: "0.08em",
-                            textTransform: "uppercase",
-                            color: "var(--neon)",
-                          }}
-                        >
-                          Legacy sport cleanup
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: "var(--text3)",
-                            marginTop: 3,
-                            lineHeight: 1.4,
-                          }}
-                        >
-                          Found {legacy.length} match
-                          {legacy.length === 1 ? "" : "es"} tagged as a non-Pickleball sport.
-                          Convert them all to Pickleball to unify your stats.
-                        </div>
-                      </div>
-                      <button
-                        onClick={runMigration}
-                        className="btn btn-primary btn-sm"
-                      >
-                        Convert all
-                      </button>
-                    </div>
-                  );
-                })()}
-                {(() => {
                   // Group matches by date for the v2 dividers — newest day first
                   const sorted = [...matches].sort((a, b) =>
                     b.date.localeCompare(a.date),
@@ -10682,7 +10614,7 @@
 
       function BottomNav({ page, setPage, isAdmin }) {
         const base = [
-          { id: "scoreboard", label: "Scores" },
+          { id: "scoreboard", label: "Home" },
           { id: "results", label: "Results" },
           { id: "venues", label: "Spots" },
           { id: "dispatch", label: "Chat" },
